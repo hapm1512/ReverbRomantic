@@ -40,6 +40,8 @@ private:
     juce::ComboBox categoryBox, presetBox, algorithmBox, qualityBox;
     juce::TextButton previousPreset { "<" }, nextPreset { ">" }, randomPreset { "RND" };
     juce::ToggleButton freeze { "FREEZE" }, bypass { "BYPASS" };
+    std::array<juce::Slider, 3> freezeSliders;
+    std::array<juce::Label, 3> freezeLabels;
     juce::ToggleButton sidechainEnable { "SIDECHAIN" };
     juce::Label sidechainStatus;
 
@@ -68,6 +70,7 @@ private:
     std::array<std::unique_ptr<SA>, 16> sliderAttachments;
     std::array<std::unique_ptr<SA>, 5> sidechainSliderAttachments;
     std::unique_ptr<BA> freezeAttachment, bypassAttachment, sidechainEnableAttachment;
+    std::array<std::unique_ptr<SA>, 3> freezeSliderAttachments;
     std::unique_ptr<BA> shimmerEnableAttachment;
     std::array<std::unique_ptr<SA>, 3> shimmerSliderAttachments;
     std::unique_ptr<CA> shimmerPitchAttachment;
@@ -80,6 +83,7 @@ private:
 
     std::array<juce::Rectangle<int>, 4> panelBounds;
     juce::Rectangle<int> shimmerPanelBounds;
+    juce::Rectangle<int> freezePanelBounds;
     juce::Rectangle<int> sidechainPanelBounds;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ReverbRomanticAudioProcessorEditor)

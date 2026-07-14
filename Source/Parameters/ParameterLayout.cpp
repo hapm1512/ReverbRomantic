@@ -89,6 +89,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     parameters.push_back (std::make_unique<juce::AudioParameterBool> (
         juce::ParameterID { IDs::freeze, 1 }, "Freeze", false));
 
+    addFloat (IDs::freezeMix,  "Freeze Mix",  0.0f, 100.0f, 0.1f, 100.0f);
+    addFloat (IDs::freezeFade, "Freeze Fade", 20.0f, 500.0f, 1.0f, 80.0f, 0.55f);
+    addFloat (IDs::freezeDamp, "Freeze Damp", 0.0f, 100.0f, 0.1f, 35.0f);
+
     parameters.push_back (std::make_unique<juce::AudioParameterBool> (
         juce::ParameterID { IDs::bypass, 1 }, "Bypass", false));
 

@@ -36,6 +36,9 @@ inline constexpr auto highCut    = "highCut";
 inline constexpr auto output     = "output";
 inline constexpr auto quality    = "quality";
 inline constexpr auto freeze     = "freeze";
+inline constexpr auto freezeMix  = "freezeMix";
+inline constexpr auto freezeFade = "freezeFade";
+inline constexpr auto freezeDamp = "freezeDamp";
 inline constexpr auto bypass     = "bypass";
 }
 
