@@ -61,7 +61,6 @@ private:
     Limiter limiter;
 
     // Prime delay lengths referenced to 48 kHz.
-    // Scaling by sample rate and Size preserves the decorrelated timing ratios.
     static constexpr std::array<int, 16> primeDelaySamples48k {
         1493, 1801, 1987, 2111,
         2273, 2549, 2843, 2969,
@@ -78,7 +77,9 @@ private:
     float dampingCoefficient = 0.5f;
     float toneGain = 1.0f;
     float modulationDepthSamples = 0.0f;
+    float earlyOutputGain = 0.32f;
     float lateOutputGain = 1.0f;
+    float energyCompensation = 1.0f;
     float hpInputL = 0.0f, hpInputR = 0.0f;
     float hpOutputL = 0.0f, hpOutputR = 0.0f;
     float lpStateL = 0.0f, lpStateR = 0.0f;
