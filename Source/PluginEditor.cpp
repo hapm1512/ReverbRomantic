@@ -42,6 +42,21 @@ constexpr std::array<const char*, 3> freezeSuffixes {
     " %", " ms", " %"
 };
 
+
+constexpr std::array<const char*, 5> duckingParameterIds {
+    Parameters::IDs::duckThreshold,
+    Parameters::IDs::duckDepth,
+    Parameters::IDs::duckAttack,
+    Parameters::IDs::duckRelease,
+    Parameters::IDs::duckKnee
+};
+constexpr std::array<const char*, 5> duckingNames {
+    "THRESHOLD", "DEPTH", "ATTACK", "RELEASE", "KNEE"
+};
+constexpr std::array<const char*, 5> duckingSuffixes {
+    " dB", " %", " ms", " ms", " dB"
+};
+
 constexpr std::array<const char*, 5> sidechainParameterIds {
     Parameters::IDs::sidechainThreshold,
     Parameters::IDs::sidechainAmount,
@@ -62,8 +77,8 @@ ReverbRomanticAudioProcessorEditor::ReverbRomanticAudioProcessorEditor (ReverbRo
 {
     setLookAndFeel (&laf);
     setResizable (true, true);
-    setResizeLimits (900, 860, 1600, 1280);
-    setSize (1180, 940);
+    setResizeLimits (900, 980, 1600, 1420);
+    setSize (1180, 1060);
 
     title.setText ("REVERB ROMANTIC", juce::dontSendNotification);
     title.setJustificationType (juce::Justification::centredLeft);
@@ -264,6 +279,19 @@ ReverbRomanticAudioProcessorEditor::ReverbRomanticAudioProcessorEditor (ReverbRo
             processor.apvts, freezeParameterIds[i], freezeSliders[i]);
     }
 
+    for (size_t i = 0; i < duckingSliders.size(); ++i)
+    {
+        setupSidechainSlider (duckingSliders[i], duckingLabels[i],
+                              duckingNames[i], duckingSuffixes[i]);
+        duckingSliderAttachments[i] = std::make_unique<SA> (
+            processor.apvts, duckingParameterIds[i], duckingSliders[i]);
+    }
+
+    duckingEnable.setClickingTogglesState (true);
+    duckingEnableAttachment = std::make_unique<BA> (
+        processor.apvts, Parameters::IDs::duckingEnable, duckingEnable);
+    addAndMakeVisible (duckingEnable);
+
     for (size_t i = 0; i < sidechainSliders.size(); ++i)
     {
         setupSidechainSlider (sidechainSliders[i], sidechainLabels[i],
@@ -366,6 +394,9 @@ void ReverbRomanticAudioProcessorEditor::paint (juce::Graphics& g)
     if (! freezePanelBounds.isEmpty())
         drawPanel (g, freezePanelBounds, "FREEZE / INFINITE HOLD");
 
+    if (! duckingPanelBounds.isEmpty())
+        drawPanel (g, duckingPanelBounds, "DUCKING REVERB");
+
     if (! sidechainPanelBounds.isEmpty())
         drawPanel (g, sidechainPanelBounds, "SIDECHAIN DUCKING");
 }
@@ -439,6 +470,27 @@ void ReverbRomanticAudioProcessorEditor::resized()
     auto categoryArea = controls.removeFromRight (juce::jmin (130, controls.getWidth()));
     categoryLabel.setBounds (categoryArea.removeFromTop (17));
     categoryBox.setBounds (categoryArea.removeFromTop (34));
+
+    duckingPanelBounds = area.removeFromBottom (122).reduced (18, 6);
+    {
+        auto inner = duckingPanelBounds.reduced (10);
+        inner.removeFromTop (30);
+
+        auto enableArea = inner.removeFromLeft (132);
+        duckingEnable.setBounds (enableArea.removeFromTop (38).reduced (4, 2));
+
+        inner.removeFromLeft (8);
+        const int cellWidth = juce::jmax (1, inner.getWidth() / 5);
+
+        for (size_t i = 0; i < duckingSliders.size(); ++i)
+        {
+            auto cell = inner.removeFromLeft (i + 1 == duckingSliders.size()
+                                                ? inner.getWidth()
+                                                : cellWidth);
+            duckingLabels[i].setBounds (cell.removeFromTop (18));
+            duckingSliders[i].setBounds (cell.reduced (3, 0));
+        }
+    }
 
     sidechainPanelBounds = area.removeFromBottom (122).reduced (18, 6);
     {

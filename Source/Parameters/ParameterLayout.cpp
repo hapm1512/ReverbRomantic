@@ -43,6 +43,22 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     addFloat (IDs::ducking,    "Ducking",    0.0f,    100.0f,   0.1f,   18.0f);
 
     parameters.push_back (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { IDs::duckingEnable, 1 },
+        "Ducking Enable",
+        false));
+
+    addFloat (IDs::duckThreshold, "Duck Threshold",
+              -60.0f, 0.0f, 0.1f, -24.0f);
+    addFloat (IDs::duckDepth, "Duck Depth",
+              0.0f, 100.0f, 0.1f, 50.0f);
+    addFloat (IDs::duckAttack, "Duck Attack",
+              1.0f, 100.0f, 0.1f, 10.0f, 0.45f);
+    addFloat (IDs::duckRelease, "Duck Release",
+              50.0f, 1000.0f, 1.0f, 250.0f, 0.45f);
+    addFloat (IDs::duckKnee, "Duck Knee",
+              0.0f, 12.0f, 0.1f, 6.0f);
+
+    parameters.push_back (std::make_unique<juce::AudioParameterBool> (
         juce::ParameterID { IDs::shimmerEnable, 1 },
         "Shimmer Enable",
         false));

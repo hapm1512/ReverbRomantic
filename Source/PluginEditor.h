@@ -42,6 +42,10 @@ private:
     juce::ToggleButton freeze { "FREEZE" }, bypass { "BYPASS" };
     std::array<juce::Slider, 3> freezeSliders;
     std::array<juce::Label, 3> freezeLabels;
+    juce::ToggleButton duckingEnable { "DUCKING" };
+    std::array<juce::Slider, 5> duckingSliders;
+    std::array<juce::Label, 5> duckingLabels;
+
     juce::ToggleButton sidechainEnable { "SIDECHAIN" };
     juce::Label sidechainStatus;
 
@@ -68,8 +72,9 @@ private:
     std::array<juce::Label, 5> sidechainLabels;
     std::array<juce::Label, 16> sliderLabels;
     std::array<std::unique_ptr<SA>, 16> sliderAttachments;
+    std::array<std::unique_ptr<SA>, 5> duckingSliderAttachments;
     std::array<std::unique_ptr<SA>, 5> sidechainSliderAttachments;
-    std::unique_ptr<BA> freezeAttachment, bypassAttachment, sidechainEnableAttachment;
+    std::unique_ptr<BA> freezeAttachment, bypassAttachment, duckingEnableAttachment, sidechainEnableAttachment;
     std::array<std::unique_ptr<SA>, 3> freezeSliderAttachments;
     std::unique_ptr<BA> shimmerEnableAttachment;
     std::array<std::unique_ptr<SA>, 3> shimmerSliderAttachments;
@@ -84,6 +89,7 @@ private:
     std::array<juce::Rectangle<int>, 4> panelBounds;
     juce::Rectangle<int> shimmerPanelBounds;
     juce::Rectangle<int> freezePanelBounds;
+    juce::Rectangle<int> duckingPanelBounds;
     juce::Rectangle<int> sidechainPanelBounds;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ReverbRomanticAudioProcessorEditor)
