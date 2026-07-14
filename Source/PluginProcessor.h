@@ -6,6 +6,7 @@
 #include <vector>
 #include "DSP/HybridFDN16.h"
 #include "DSP/ShimmerProcessor.h"
+#include "DSP/FreezeProcessor.h"
 #include "Parameters/ParameterLayout.h"
 
 class ReverbRomanticAudioProcessor final : public juce::AudioProcessor
@@ -109,6 +110,7 @@ private:
     void storePersistentMetadata();
 
     HybridFDN16 engine;
+    FreezeProcessor freezeProcessor;
     ShimmerProcessor shimmer;
 
     juce::ValueTree snapshotA;

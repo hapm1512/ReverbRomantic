@@ -331,12 +331,14 @@ void ReverbRomanticAudioProcessor::prepareToPlay (double sampleRate,
                                         static_cast<juce::uint32> (samplesPerBlock),
                                         2 };
     engine.prepare (spec);
+    freezeProcessor.prepare (spec);
     shimmer.prepare (spec);
 }
 
 void ReverbRomanticAudioProcessor::releaseResources()
 {
     engine.reset();
+    freezeProcessor.reset();
     shimmer.reset();
 }
 
@@ -614,6 +616,17 @@ void ReverbRomanticAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
         apvts.getRawParameterValue (Parameters::IDs::shimmerTone)->load();
     shimmer.setParameters (shimmerParameters);
 
+    FreezeProcessor::Parameters freezeParameters;
+    freezeParameters.enabled =
+        apvts.getRawParameterValue (Parameters::IDs::freeze)->load() > 0.5f;
+    freezeParameters.mixPercent =
+        apvts.getRawParameterValue (Parameters::IDs::freezeMix)->load();
+    freezeParameters.fadeTimeMs =
+        apvts.getRawParameterValue (Parameters::IDs::freezeFade)->load();
+    freezeParameters.damping =
+        apvts.getRawParameterValue (Parameters::IDs::freezeDamp)->load() * 0.01f;
+    freezeProcessor.setParameters (freezeParameters);
+
     const bool isMono = buffer.getNumChannels() == 1;
 
     
@@ -657,6 +670,12 @@ for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
         {
             engine.processStereo (dryL, dryR, wetL, wetR);
         }
+
+        float frozenL = wetL;
+        float frozenR = wetR;
+        freezeProcessor.processStereo (wetL, wetR, frozenL, frozenR);
+        wetL = frozenL;
+        wetR = frozenR;
 
         float shimmeredL = wetL;
         float shimmeredR = wetR;

@@ -59,14 +59,19 @@ void FreezeProcessor::reset() noexcept
 
 void FreezeProcessor::setParameters (const Parameters& newParameters) noexcept
 {
+    const float newFadeTimeMs = std::clamp (newParameters.fadeTimeMs,
+                                            minimumFadeMs,
+                                            maximumFadeMs);
+    const bool fadeTimeChanged = std::abs (newFadeTimeMs - parameters.fadeTimeMs) > 0.01f;
+
     parameters.enabled = newParameters.enabled;
-    parameters.fadeTimeMs = std::clamp (newParameters.fadeTimeMs,
-                                        minimumFadeMs,
-                                        maximumFadeMs);
+    parameters.fadeTimeMs = newFadeTimeMs;
     parameters.damping = std::clamp (newParameters.damping, 0.0f, 1.0f);
     parameters.mixPercent = std::clamp (newParameters.mixPercent, 0.0f, 100.0f);
 
-    freezeBlend.reset (sampleRate, parameters.fadeTimeMs * 0.001);
+    if (fadeTimeChanged)
+        freezeBlend.reset (sampleRate, parameters.fadeTimeMs * 0.001);
+
     freezeBlend.setTargetValue (parameters.enabled ? 1.0f : 0.0f);
     mixSmoother.setTargetValue (parameters.mixPercent * 0.01f);
     dampingSmoother.setTargetValue (parameters.damping);
