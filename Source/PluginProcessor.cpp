@@ -566,6 +566,20 @@ void ReverbRomanticAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     dspParameters.modulationPercent = apvts.getRawParameterValue (Parameters::IDs::modulation)->load();
     dspParameters.bloomPercent = apvts.getRawParameterValue (Parameters::IDs::bloom)->load();
     dspParameters.duckingPercent = apvts.getRawParameterValue (Parameters::IDs::ducking)->load();
+
+    dspParameters.sidechainEnabled =
+        apvts.getRawParameterValue (Parameters::IDs::sidechainEnable)->load() > 0.5f;
+    dspParameters.sidechainThresholdDb =
+        apvts.getRawParameterValue (Parameters::IDs::sidechainThreshold)->load();
+    dspParameters.sidechainAmountPercent =
+        apvts.getRawParameterValue (Parameters::IDs::sidechainAmount)->load();
+    dspParameters.sidechainAttackMs =
+        apvts.getRawParameterValue (Parameters::IDs::sidechainAttack)->load();
+    dspParameters.sidechainReleaseMs =
+        apvts.getRawParameterValue (Parameters::IDs::sidechainRelease)->load();
+    dspParameters.sidechainHighPassHz =
+        apvts.getRawParameterValue (Parameters::IDs::sidechainHPF)->load();
+
     dspParameters.lowCutHz = apvts.getRawParameterValue (Parameters::IDs::lowCut)->load();
     dspParameters.highCutHz = apvts.getRawParameterValue (Parameters::IDs::highCut)->load();
     dspParameters.warmthDb = apvts.getRawParameterValue (Parameters::IDs::warmth)->load();
@@ -582,14 +596,47 @@ void ReverbRomanticAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
 
     const bool isMono = buffer.getNumChannels() == 1;
 
-    for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
+    
+    const bool useExternalSidechain =
+        dspParameters.sidechainEnabled
+        && getBusCount (true) > 1
+        && getBus (true, 1) != nullptr
+        && getBus (true, 1)->isEnabled();
+
+    juce::AudioBuffer<float> sidechainBuffer;
+    const float* sidechainLeft = nullptr;
+    const float* sidechainRight = nullptr;
+
+    if (useExternalSidechain)
+    {
+        sidechainBuffer = getBusBuffer (buffer, true, 1);
+
+        if (sidechainBuffer.getNumChannels() > 0)
+        {
+            sidechainLeft = sidechainBuffer.getReadPointer (0);
+            sidechainRight = sidechainBuffer.getNumChannels() > 1
+                               ? sidechainBuffer.getReadPointer (1)
+                               : sidechainLeft;
+        }
+    }
+
+for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
     {
         const float dryL = left[sample];
         const float dryR = isMono ? dryL : right[sample];
         float wetL = 0.0f;
         float wetR = 0.0f;
-
-        engine.processStereo (dryL, dryR, wetL, wetR);
+        if (sidechainLeft != nullptr)
+        {
+            engine.processStereo (dryL, dryR,
+                                  sidechainLeft[sample],
+                                  sidechainRight[sample],
+                                  wetL, wetR);
+        }
+        else
+        {
+            engine.processStereo (dryL, dryR, wetL, wetR);
+        }
 
         if (isMono)
         {

@@ -41,6 +41,22 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     addFloat (IDs::modulation, "Modulation", 0.0f,    100.0f,   0.1f,   22.0f);
     addFloat (IDs::bloom,      "Bloom",      0.0f,    100.0f,   0.1f,   45.0f);
     addFloat (IDs::ducking,    "Ducking",    0.0f,    100.0f,   0.1f,   18.0f);
+
+    parameters.push_back (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { IDs::sidechainEnable, 1 },
+        "Sidechain Enable",
+        false));
+
+    addFloat (IDs::sidechainThreshold, "Sidechain Threshold",
+              -60.0f, 0.0f, 0.1f, -24.0f);
+    addFloat (IDs::sidechainAmount, "Sidechain Amount",
+              0.0f, 100.0f, 0.1f, 50.0f);
+    addFloat (IDs::sidechainAttack, "Sidechain Attack",
+              0.1f, 200.0f, 0.1f, 8.0f, 0.45f);
+    addFloat (IDs::sidechainRelease, "Sidechain Release",
+              10.0f, 3000.0f, 1.0f, 220.0f, 0.40f);
+    addFloat (IDs::sidechainHPF, "Sidechain HPF",
+              20.0f, 1000.0f, 1.0f, 120.0f, 0.35f);
     addFloat (IDs::lowCut,     "Low Cut",   20.0f,   1000.0f,   1.0f,  120.0f, 0.35f);
     addFloat (IDs::highCut,    "High Cut",1000.0f,  20000.0f,   1.0f,12000.0f, 0.35f);
     addFloat (IDs::output,     "Output",    -24.0f,     12.0f,   0.1f,    0.0f);
