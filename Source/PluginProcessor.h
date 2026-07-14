@@ -2,6 +2,8 @@
 
 #include <JuceHeader.h>
 #include <array>
+#include <set>
+#include <vector>
 #include "DSP/HybridFDN16.h"
 #include "Parameters/ParameterLayout.h"
 
@@ -58,6 +60,30 @@ public:
     void loadFactoryPreset (int index);
     int getCurrentFactoryPreset() const noexcept { return currentFactoryPreset.load(); }
 
+    // Epic 4D: A/B, favourites, user presets and undo/redo.
+    void captureSnapshotA();
+    void captureSnapshotB();
+    void recallSnapshotA();
+    void recallSnapshotB();
+    bool isSnapshotBActive() const noexcept { return snapshotBActive.load(); }
+
+    void setFactoryPresetFavourite (int index, bool shouldBeFavourite);
+    bool isFactoryPresetFavourite (int index) const;
+    juce::Array<int> getFavouriteFactoryPresets() const;
+
+    juce::StringArray getUserPresetNames() const;
+    bool saveUserPreset (const juce::String& name);
+    bool loadUserPreset (const juce::String& name);
+    bool deleteUserPreset (const juce::String& name);
+    bool renameUserPreset (const juce::String& oldName, const juce::String& newName);
+    bool duplicateUserPreset (const juce::String& sourceName, const juce::String& destinationName);
+
+    void pushUndoState();
+    bool undoPresetChange();
+    bool redoPresetChange();
+    bool canUndoPresetChange() const noexcept { return ! undoHistory.empty(); }
+    bool canRedoPresetChange() const noexcept { return ! redoHistory.empty(); }
+
     juce::AudioProcessorValueTreeState apvts;
 
     float getInputPeakLeft() const noexcept  { return inputPeakL.load(); }
@@ -72,7 +98,22 @@ private:
     static const std::array<FactoryPreset, 48>& getFactoryPresetTable() noexcept;
     void setParameterPlainValue (const juce::String& id, float plainValue);
 
+    juce::File getUserPresetDirectory() const;
+    juce::File getUserPresetFile (const juce::String& name) const;
+    juce::ValueTree createStateSnapshot();
+    void restoreStateSnapshot (const juce::ValueTree& snapshot);
+    void loadPersistentMetadata();
+    void storePersistentMetadata();
+
     HybridFDN16 engine;
+
+    juce::ValueTree snapshotA;
+    juce::ValueTree snapshotB;
+    std::atomic<bool> snapshotBActive { false };
+    std::set<int> favouriteFactoryPresets;
+    std::vector<juce::ValueTree> undoHistory;
+    std::vector<juce::ValueTree> redoHistory;
+    static constexpr size_t maxUndoStates = 32;
 
     std::atomic<int> currentFactoryPreset { 0 };
     std::atomic<float> inputPeakL  { 0.0f };

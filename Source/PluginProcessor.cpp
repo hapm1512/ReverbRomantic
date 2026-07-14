@@ -17,6 +17,9 @@ ReverbRomanticAudioProcessor::ReverbRomanticAudioProcessor()
                           .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       apvts (*this, nullptr, "PARAMETERS", Parameters::createParameterLayout())
 {
+    snapshotA = apvts.copyState();
+    snapshotB = snapshotA.createCopy();
+    loadPersistentMetadata();
 }
 
 const std::array<ReverbRomanticAudioProcessor::FactoryPreset, 48>&
@@ -94,7 +97,7 @@ juce::String ReverbRomanticAudioProcessor::getFactoryPresetCategory (int index) 
 
 juce::StringArray ReverbRomanticAudioProcessor::getFactoryPresetCategories() const
 {
-    juce::StringArray categories { "All" };
+    juce::StringArray categories { "All", "Favorites" };
     for (const auto& preset : getFactoryPresetTable())
         categories.addIfNotAlreadyThere (preset.category);
     return categories;
@@ -108,6 +111,7 @@ void ReverbRomanticAudioProcessor::setParameterPlainValue (const juce::String& i
 
 void ReverbRomanticAudioProcessor::loadFactoryPreset (int index)
 {
+    pushUndoState();
     const int safeIndex = juce::jlimit (0, getNumFactoryPresets() - 1, index);
     const auto& preset = getFactoryPresetTable()[static_cast<size_t> (safeIndex)];
 
@@ -119,6 +123,204 @@ void ReverbRomanticAudioProcessor::loadFactoryPreset (int index)
 
     currentFactoryPreset.store (safeIndex);
     apvts.state.setProperty ("factoryPresetIndex", safeIndex, nullptr);
+}
+
+
+juce::ValueTree ReverbRomanticAudioProcessor::createStateSnapshot()
+{
+    return apvts.copyState().createCopy();
+}
+
+void ReverbRomanticAudioProcessor::restoreStateSnapshot (const juce::ValueTree& snapshot)
+{
+    if (snapshot.isValid() && snapshot.hasType (apvts.state.getType()))
+        apvts.replaceState (snapshot.createCopy());
+}
+
+void ReverbRomanticAudioProcessor::captureSnapshotA()
+{
+    snapshotA = createStateSnapshot();
+    snapshotBActive.store (false);
+}
+
+void ReverbRomanticAudioProcessor::captureSnapshotB()
+{
+    snapshotB = createStateSnapshot();
+    snapshotBActive.store (true);
+}
+
+void ReverbRomanticAudioProcessor::recallSnapshotA()
+{
+    pushUndoState();
+    restoreStateSnapshot (snapshotA);
+    snapshotBActive.store (false);
+}
+
+void ReverbRomanticAudioProcessor::recallSnapshotB()
+{
+    pushUndoState();
+    restoreStateSnapshot (snapshotB);
+    snapshotBActive.store (true);
+}
+
+void ReverbRomanticAudioProcessor::setFactoryPresetFavourite (int index,
+                                                               bool shouldBeFavourite)
+{
+    const int safeIndex = juce::jlimit (0, getNumFactoryPresets() - 1, index);
+    if (shouldBeFavourite)
+        favouriteFactoryPresets.insert (safeIndex);
+    else
+        favouriteFactoryPresets.erase (safeIndex);
+    storePersistentMetadata();
+}
+
+bool ReverbRomanticAudioProcessor::isFactoryPresetFavourite (int index) const
+{
+    return favouriteFactoryPresets.count (index) != 0;
+}
+
+juce::Array<int> ReverbRomanticAudioProcessor::getFavouriteFactoryPresets() const
+{
+    juce::Array<int> result;
+    for (const auto index : favouriteFactoryPresets)
+        result.add (index);
+    return result;
+}
+
+juce::File ReverbRomanticAudioProcessor::getUserPresetDirectory() const
+{
+    return juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
+        .getChildFile ("ReverbRomantic")
+        .getChildFile ("Presets");
+}
+
+juce::File ReverbRomanticAudioProcessor::getUserPresetFile (const juce::String& name) const
+{
+    auto safeName = juce::File::createLegalFileName (name.trim());
+    if (safeName.isEmpty())
+        safeName = "User Preset";
+    return getUserPresetDirectory().getChildFile (safeName + ".rrpreset");
+}
+
+juce::StringArray ReverbRomanticAudioProcessor::getUserPresetNames() const
+{
+    juce::StringArray names;
+    const auto directory = getUserPresetDirectory();
+    if (! directory.isDirectory())
+        return names;
+
+    for (const auto& file : directory.findChildFiles (juce::File::findFiles, false, "*.rrpreset"))
+        names.add (file.getFileNameWithoutExtension());
+    names.sort (true);
+    return names;
+}
+
+bool ReverbRomanticAudioProcessor::saveUserPreset (const juce::String& name)
+{
+    const auto directory = getUserPresetDirectory();
+    if (! directory.exists() && directory.createDirectory().failed())
+        return false;
+
+    auto snapshot = createStateSnapshot();
+    snapshot.setProperty ("userPresetName", name.trim(), nullptr);
+    if (auto xml = snapshot.createXml())
+        return xml->writeTo (getUserPresetFile (name));
+    return false;
+}
+
+bool ReverbRomanticAudioProcessor::loadUserPreset (const juce::String& name)
+{
+    const auto file = getUserPresetFile (name);
+    if (! file.existsAsFile())
+        return false;
+
+    std::unique_ptr<juce::XmlElement> xml (juce::XmlDocument::parse (file));
+    if (xml == nullptr)
+        return false;
+
+    const auto state = juce::ValueTree::fromXml (*xml);
+    if (! state.isValid() || ! state.hasType (apvts.state.getType()))
+        return false;
+
+    pushUndoState();
+    restoreStateSnapshot (state);
+    currentFactoryPreset.store (-1);
+    apvts.state.setProperty ("factoryPresetIndex", -1, nullptr);
+    return true;
+}
+
+bool ReverbRomanticAudioProcessor::deleteUserPreset (const juce::String& name)
+{
+    const auto file = getUserPresetFile (name);
+    return ! file.existsAsFile() || file.deleteFile();
+}
+
+bool ReverbRomanticAudioProcessor::renameUserPreset (const juce::String& oldName,
+                                                      const juce::String& newName)
+{
+    const auto source = getUserPresetFile (oldName);
+    const auto destination = getUserPresetFile (newName);
+    return source.existsAsFile() && source.moveFileTo (destination);
+}
+
+bool ReverbRomanticAudioProcessor::duplicateUserPreset (const juce::String& sourceName,
+                                                         const juce::String& destinationName)
+{
+    const auto source = getUserPresetFile (sourceName);
+    const auto destination = getUserPresetFile (destinationName);
+    return source.existsAsFile() && source.copyFileTo (destination);
+}
+
+void ReverbRomanticAudioProcessor::pushUndoState()
+{
+    undoHistory.push_back (createStateSnapshot());
+    if (undoHistory.size() > maxUndoStates)
+        undoHistory.erase (undoHistory.begin());
+    redoHistory.clear();
+}
+
+bool ReverbRomanticAudioProcessor::undoPresetChange()
+{
+    if (undoHistory.empty())
+        return false;
+    redoHistory.push_back (createStateSnapshot());
+    const auto state = undoHistory.back();
+    undoHistory.pop_back();
+    restoreStateSnapshot (state);
+    return true;
+}
+
+bool ReverbRomanticAudioProcessor::redoPresetChange()
+{
+    if (redoHistory.empty())
+        return false;
+    undoHistory.push_back (createStateSnapshot());
+    const auto state = redoHistory.back();
+    redoHistory.pop_back();
+    restoreStateSnapshot (state);
+    return true;
+}
+
+void ReverbRomanticAudioProcessor::loadPersistentMetadata()
+{
+    favouriteFactoryPresets.clear();
+    const auto encoded = apvts.state.getProperty ("favouriteFactoryPresets", "").toString();
+    juce::StringArray tokens;
+    tokens.addTokens (encoded, ",", "");
+    for (const auto& token : tokens)
+    {
+        const int index = token.getIntValue();
+        if (juce::isPositiveAndBelow (index, getNumFactoryPresets()))
+            favouriteFactoryPresets.insert (index);
+    }
+}
+
+void ReverbRomanticAudioProcessor::storePersistentMetadata()
+{
+    juce::StringArray values;
+    for (const auto index : favouriteFactoryPresets)
+        values.add (juce::String (index));
+    apvts.state.setProperty ("favouriteFactoryPresets", values.joinIntoString (","), nullptr);
 }
 
 void ReverbRomanticAudioProcessor::prepareToPlay (double sampleRate,
@@ -361,6 +563,7 @@ juce::AudioProcessorEditor* ReverbRomanticAudioProcessor::createEditor()
 
 void ReverbRomanticAudioProcessor::getStateInformation (juce::MemoryBlock& destination)
 {
+    storePersistentMetadata();
     if (auto xml = apvts.copyState().createXml())
         copyXmlToBinary (*xml, destination);
 }
@@ -371,8 +574,11 @@ void ReverbRomanticAudioProcessor::setStateInformation (const void* data, int si
         if (xml->hasTagName (apvts.state.getType()))
         {
             apvts.replaceState (juce::ValueTree::fromXml (*xml));
-            currentFactoryPreset.store (juce::jlimit (0, getNumFactoryPresets() - 1,
+            currentFactoryPreset.store (juce::jlimit (-1, getNumFactoryPresets() - 1,
                 static_cast<int> (apvts.state.getProperty ("factoryPresetIndex", 0))));
+            loadPersistentMetadata();
+            snapshotA = createStateSnapshot();
+            snapshotB = snapshotA.createCopy();
         }
 }
 

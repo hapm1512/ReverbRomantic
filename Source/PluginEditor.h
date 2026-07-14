@@ -27,6 +27,8 @@ private:
     void rebuildPresetList();
     void loadVisiblePreset (int visibleIndex);
     void selectProcessorPreset();
+    void refreshUserPresetList();
+    void updateFavouriteButton();
     void drawPanel (juce::Graphics&, juce::Rectangle<int>, const juce::String&) const;
 
     ReverbRomanticAudioProcessor& processor;
@@ -36,6 +38,16 @@ private:
     juce::ComboBox categoryBox, presetBox, algorithmBox, qualityBox;
     juce::TextButton previousPreset { "<" }, nextPreset { ">" }, randomPreset { "RND" };
     juce::ToggleButton freeze { "FREEZE" }, bypass { "BYPASS" };
+
+    juce::ComboBox userPresetBox;
+    juce::TextButton favouriteButton { "FAV" };
+    juce::TextButton saveUserButton { "SAVE" }, loadUserButton { "LOAD" };
+    juce::TextButton renameUserButton { "REN" }, duplicateUserButton { "DUP" };
+    juce::TextButton deleteUserButton { "DEL" };
+    juce::TextButton snapshotAButton { "A" }, snapshotBButton { "B" };
+    juce::TextButton captureAButton { "SET A" }, captureBButton { "SET B" };
+    juce::TextButton undoButton { "UNDO" }, redoButton { "REDO" };
+    juce::String selectedUserPreset;
 
     std::vector<int> visiblePresetIndexes;
 

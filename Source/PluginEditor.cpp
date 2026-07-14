@@ -87,8 +87,106 @@ ReverbRomanticAudioProcessorEditor::ReverbRomanticAudioProcessorEditor (ReverbRo
             presetBox.setSelectedItemIndex (juce::Random::getSystemRandom().nextInt (count));
     };
 
+    for (auto* component : { static_cast<juce::Component*> (&userPresetBox),
+                             static_cast<juce::Component*> (&favouriteButton),
+                             static_cast<juce::Component*> (&saveUserButton),
+                             static_cast<juce::Component*> (&loadUserButton),
+                             static_cast<juce::Component*> (&renameUserButton),
+                             static_cast<juce::Component*> (&duplicateUserButton),
+                             static_cast<juce::Component*> (&deleteUserButton),
+                             static_cast<juce::Component*> (&snapshotAButton),
+                             static_cast<juce::Component*> (&snapshotBButton),
+                             static_cast<juce::Component*> (&captureAButton),
+                             static_cast<juce::Component*> (&captureBButton),
+                             static_cast<juce::Component*> (&undoButton),
+                             static_cast<juce::Component*> (&redoButton) })
+        addAndMakeVisible (*component);
+
+    userPresetBox.setEditableText (true);
+    userPresetBox.setTextWhenNothingSelected ("User preset name");
+    userPresetBox.onChange = [this]
+    {
+        if (userPresetBox.getSelectedItemIndex() >= 0)
+            selectedUserPreset = userPresetBox.getText();
+    };
+
+    favouriteButton.onClick = [this]
+    {
+        const int index = processor.getCurrentFactoryPreset();
+        if (index >= 0)
+        {
+            processor.setFactoryPresetFavourite (
+                index, ! processor.isFactoryPresetFavourite (index));
+            updateFavouriteButton();
+        }
+    };
+
+    saveUserButton.onClick = [this]
+    {
+        auto name = userPresetBox.getText().trim();
+        if (name.isEmpty() || name == "User preset name")
+            name = "User Preset " + juce::String (processor.getUserPresetNames().size() + 1);
+        if (processor.saveUserPreset (name))
+        {
+            selectedUserPreset = name;
+            refreshUserPresetList();
+        }
+    };
+    loadUserButton.onClick = [this]
+    {
+        const auto name = userPresetBox.getText().trim();
+        if (processor.loadUserPreset (name))
+            selectedUserPreset = name;
+    };
+    deleteUserButton.onClick = [this]
+    {
+        const auto name = selectedUserPreset.isNotEmpty() ? selectedUserPreset
+                                                         : userPresetBox.getText().trim();
+        if (processor.deleteUserPreset (name))
+        {
+            selectedUserPreset.clear();
+            refreshUserPresetList();
+        }
+    };
+    renameUserButton.onClick = [this]
+    {
+        const auto newName = userPresetBox.getText().trim();
+        if (selectedUserPreset.isNotEmpty() && newName.isNotEmpty()
+            && processor.renameUserPreset (selectedUserPreset, newName))
+        {
+            selectedUserPreset = newName;
+            refreshUserPresetList();
+        }
+    };
+    duplicateUserButton.onClick = [this]
+    {
+        const auto source = selectedUserPreset.isNotEmpty() ? selectedUserPreset
+                                                            : userPresetBox.getText().trim();
+        if (source.isNotEmpty())
+        {
+            auto destination = source + " Copy";
+            int suffix = 2;
+            while (processor.getUserPresetNames().contains (destination))
+                destination = source + " Copy " + juce::String (suffix++);
+            if (processor.duplicateUserPreset (source, destination))
+            {
+                selectedUserPreset = destination;
+                refreshUserPresetList();
+            }
+        }
+    };
+
+    captureAButton.onClick = [this] { processor.captureSnapshotA(); };
+    captureBButton.onClick = [this] { processor.captureSnapshotB(); };
+    snapshotAButton.onClick = [this] { processor.recallSnapshotA(); };
+    snapshotBButton.onClick = [this] { processor.recallSnapshotB(); };
+    undoButton.onClick = [this] { processor.undoPresetChange(); };
+    redoButton.onClick = [this] { processor.redoPresetChange(); };
+
     rebuildPresetList();
     selectProcessorPreset();
+    refreshUserPresetList();
+    updateFavouriteButton();
 
     for (size_t i = 0; i < sliders.size(); ++i)
     {
@@ -173,6 +271,28 @@ void ReverbRomanticAudioProcessorEditor::resized()
 {
     auto area = getLocalBounds();
     bottomBar.setBounds (area.removeFromBottom (32));
+
+    auto tools = area.removeFromBottom (38).reduced (18, 4);
+    auto abArea = tools.removeFromLeft (224);
+    captureAButton.setBounds (abArea.removeFromLeft (50).reduced (1));
+    snapshotAButton.setBounds (abArea.removeFromLeft (32).reduced (1));
+    abArea.removeFromLeft (4);
+    captureBButton.setBounds (abArea.removeFromLeft (50).reduced (1));
+    snapshotBButton.setBounds (abArea.removeFromLeft (32).reduced (1));
+    abArea.removeFromLeft (4);
+    undoButton.setBounds (abArea.removeFromLeft (52).reduced (1));
+    redoButton.setBounds (abArea.removeFromLeft (52).reduced (1));
+
+    tools.removeFromLeft (8);
+    favouriteButton.setBounds (tools.removeFromLeft (48).reduced (1));
+    tools.removeFromLeft (6);
+    saveUserButton.setBounds (tools.removeFromRight (50).reduced (1));
+    loadUserButton.setBounds (tools.removeFromRight (50).reduced (1));
+    renameUserButton.setBounds (tools.removeFromRight (44).reduced (1));
+    duplicateUserButton.setBounds (tools.removeFromRight (44).reduced (1));
+    deleteUserButton.setBounds (tools.removeFromRight (44).reduced (1));
+    userPresetBox.setBounds (tools.reduced (2, 0));
+
     auto header = area.removeFromTop (88).reduced (22, 10);
     auto brand = header.removeFromLeft (juce::jmin (350, header.getWidth() / 3));
     title.setBounds (brand.removeFromTop (42));
@@ -269,6 +389,27 @@ void ReverbRomanticAudioProcessorEditor::timerCallback()
     inputMeter.setLevels (processor.getInputPeakLeft(), processor.getInputPeakRight());
     outputMeter.setLevels (processor.getOutputPeakLeft(), processor.getOutputPeakRight());
     fftGraph.setActivity (juce::jmax (processor.getOutputPeakLeft(), processor.getOutputPeakRight()));
+    undoButton.setEnabled (processor.canUndoPresetChange());
+    redoButton.setEnabled (processor.canRedoPresetChange());
+    snapshotAButton.setToggleState (! processor.isSnapshotBActive(), juce::dontSendNotification);
+    snapshotBButton.setToggleState (processor.isSnapshotBActive(), juce::dontSendNotification);
+}
+
+void ReverbRomanticAudioProcessorEditor::refreshUserPresetList()
+{
+    const auto names = processor.getUserPresetNames();
+    userPresetBox.clear (juce::dontSendNotification);
+    userPresetBox.addItemList (names, 1);
+    if (selectedUserPreset.isNotEmpty() && names.contains (selectedUserPreset))
+        userPresetBox.setText (selectedUserPreset, juce::dontSendNotification);
+}
+
+void ReverbRomanticAudioProcessorEditor::updateFavouriteButton()
+{
+    const int index = processor.getCurrentFactoryPreset();
+    const bool favourite = index >= 0 && processor.isFactoryPresetFavourite (index);
+    favouriteButton.setButtonText (favourite ? "FAV*" : "FAV");
+    favouriteButton.setToggleState (favourite, juce::dontSendNotification);
 }
 
 void ReverbRomanticAudioProcessorEditor::rebuildPresetList()
@@ -282,6 +423,7 @@ void ReverbRomanticAudioProcessorEditor::rebuildPresetList()
     for (int index = 0; index < processor.getNumFactoryPresets(); ++index)
     {
         if (selectedCategory == "All"
+            || (selectedCategory == "Favorites" && processor.isFactoryPresetFavourite (index))
             || processor.getFactoryPresetCategory (index) == selectedCategory)
         {
             visiblePresetIndexes.push_back (index);
@@ -301,7 +443,10 @@ void ReverbRomanticAudioProcessorEditor::rebuildPresetList()
 void ReverbRomanticAudioProcessorEditor::loadVisiblePreset (int visibleIndex)
 {
     if (juce::isPositiveAndBelow (visibleIndex, static_cast<int> (visiblePresetIndexes.size())))
+    {
         processor.loadFactoryPreset (visiblePresetIndexes[static_cast<size_t> (visibleIndex)]);
+        updateFavouriteButton();
+    }
 }
 
 void ReverbRomanticAudioProcessorEditor::selectProcessorPreset()
