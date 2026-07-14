@@ -1,8 +1,10 @@
 #include "HybridFDN16.h"
 
+#include <cmath>
+
 void HybridFDN16::prepare (const juce::dsp::ProcessSpec& spec)
 {
-    sampleRate = spec.sampleRate;
+    sampleRate = juce::jmax (1.0, spec.sampleRate);
 
     for (int i = 0; i < 16; ++i)
     {
@@ -29,8 +31,11 @@ void HybridFDN16::prepare (const juce::dsp::ProcessSpec& spec)
 
 void HybridFDN16::reset()
 {
-    for (auto& delay : delays) delay.reset();
-    for (auto& delay : preDelay) delay.reset();
+    for (auto& delay : delays)
+        delay.reset();
+
+    for (auto& delay : preDelay)
+        delay.reset();
 
     feedback.fill (0.0f);
     dampingState.fill (0.0f);
@@ -48,6 +53,25 @@ void HybridFDN16::reset()
     lpStateL = lpStateR = 0.0f;
 }
 
+void HybridFDN16::updateFDNCoefficients() noexcept
+{
+    const float sampleRateScale = static_cast<float> (sampleRate / 48000.0);
+    const float safeDecaySeconds = juce::jmax (0.2f, parameters.decaySeconds);
+
+    for (size_t i = 0; i < delays.size(); ++i)
+    {
+        const float delaySamples = static_cast<float> (primeDelaySamples48k[i])
+                                   * sampleRateScale * sizeScale;
+
+        baseDelaySamples[i] = delaySamples;
+        delays[i].setDelaySamples (delaySamples);
+
+        // T60 definition: amplitude reaches -60 dB after decaySeconds.
+        const float delaySeconds = delaySamples / static_cast<float> (sampleRate);
+        feedbackGains[i] = std::pow (0.001f, delaySeconds / safeDecaySeconds);
+    }
+}
+
 void HybridFDN16::setParameters (const Parameters& newParameters) noexcept
 {
     parameters = newParameters;
@@ -60,10 +84,15 @@ void HybridFDN16::setParameters (const Parameters& newParameters) noexcept
     parameters.quality = juce::jlimit (0, 3, parameters.quality);
 
     sizeScale = juce::jlimit (0.25f, 2.0f, parameters.sizePercent * 0.01f);
-    densityScale = juce::jmap (juce::jlimit (0.0f, 1.0f, parameters.densityPercent * 0.01f), 0.72f, 1.0f);
+    densityScale = juce::jmap (juce::jlimit (0.0f, 1.0f,
+                                             parameters.densityPercent * 0.01f),
+                               0.72f, 1.0f);
 
     for (auto& delay : preDelay)
-        delay.setDelaySamples (parameters.preDelayMs * 0.001f * static_cast<float> (sampleRate));
+        delay.setDelaySamples (parameters.preDelayMs * 0.001f
+                               * static_cast<float> (sampleRate));
+
+    updateFDNCoefficients();
 
     diffuser.setAmount (parameters.diffusionPercent * 0.01f);
     earlyReflection.setSize (sizeScale);
@@ -74,16 +103,26 @@ void HybridFDN16::setParameters (const Parameters& newParameters) noexcept
     stereoWidth.setWidth (parameters.widthPercent);
 
     const float brightnessRatio = std::pow (2.0f, parameters.brightnessDb / 12.0f);
-    const float effectiveHighCut = juce::jlimit (1000.0f, 20000.0f, parameters.highCutHz * brightnessRatio);
+    const float effectiveHighCut = juce::jlimit (1000.0f, 20000.0f,
+                                                 parameters.highCutHz * brightnessRatio);
+
     lowPassCoefficient = std::exp (-juce::MathConstants<float>::twoPi
-                                   * effectiveHighCut / static_cast<float> (sampleRate));
+                                   * effectiveHighCut
+                                   / static_cast<float> (sampleRate));
+    dampingCoefficient = std::exp (-juce::MathConstants<float>::twoPi
+                                   * parameters.highCutHz
+                                   / static_cast<float> (sampleRate));
     toneGain = juce::Decibels::decibelsToGain (parameters.warmthDb * 0.12f);
-    modulationQualityScale = std::array<float, 4> { 0.55f, 0.8f, 1.0f, 1.15f }[static_cast<size_t> (parameters.quality)];
+    modulationQualityScale = std::array<float, 4> { 0.55f, 0.8f, 1.0f, 1.15f }
+        [static_cast<size_t> (parameters.quality)];
     highPassCoefficient = std::exp (-juce::MathConstants<float>::twoPi
-                                    * parameters.lowCutHz / static_cast<float> (sampleRate));
+                                    * parameters.lowCutHz
+                                    / static_cast<float> (sampleRate));
 }
 
-float HybridFDN16::processHighPass (float input, float& inputState, float& outputState) noexcept
+float HybridFDN16::processHighPass (float input,
+                                    float& inputState,
+                                    float& outputState) noexcept
 {
     const float output = highPassCoefficient * (outputState + input - inputState);
     inputState = input;
@@ -97,7 +136,10 @@ float HybridFDN16::processLowPass (float input, float& state) noexcept
     return state;
 }
 
-void HybridFDN16::processStereo (float inputL, float inputR, float& outputL, float& outputR) noexcept
+void HybridFDN16::processStereo (float inputL,
+                                 float inputR,
+                                 float& outputL,
+                                 float& outputR) noexcept
 {
     const float predelayedL = preDelay[0].process (inputL);
     const float predelayedR = preDelay[1].process (inputR);
@@ -111,38 +153,39 @@ void HybridFDN16::processStereo (float inputL, float inputR, float& outputL, flo
     earlyReflection.processStereo (predelayedL, predelayedR, earlyL, earlyR);
 
     auto mixedFeedback = feedback;
-    Matrix16::hadamard (mixedFeedback);
+    Matrix16::householder (mixedFeedback);
 
     float lateL = 0.0f;
     float lateR = 0.0f;
     const float globalModulation = modulationSource.nextValue();
-    const float dampingCoefficient = std::exp (-juce::MathConstants<float>::twoPi
-                                               * parameters.highCutHz / static_cast<float> (sampleRate));
+    const float diffusionMix = juce::jlimit (0.0f, 1.0f,
+                                              parameters.diffusionPercent * 0.01f);
 
     for (int i = 0; i < 16; ++i)
     {
         const auto index = static_cast<size_t> (i);
         phases[index] += rates[index] / static_cast<float> (sampleRate);
+
         if (phases[index] >= 1.0f)
             phases[index] -= 1.0f;
 
-        const float localLfo = std::sin (juce::MathConstants<float>::twoPi * phases[index]);
+        const float localLfo = std::sin (juce::MathConstants<float>::twoPi
+                                         * phases[index]);
         const float modulationMs = (localLfo * 0.75f + globalModulation * 0.25f)
-                                   * parameters.modulationPercent * 0.008f * modulationQualityScale;
-        const float delayMs = baseMs[index] * sizeScale + modulationMs;
-        delays[index].setDelaySamples (delayMs * 0.001f * static_cast<float> (sampleRate));
-
-        const float feedbackGain = parameters.freeze
-            ? 0.9995f
-            : std::pow (0.001f, (baseMs[index] * sizeScale * 0.001f) / parameters.decaySeconds);
+                                   * parameters.modulationPercent
+                                   * 0.008f * modulationQualityScale;
+        const float modulationSamples = modulationMs * 0.001f
+                                        * static_cast<float> (sampleRate);
+        delays[index].setModulationOffset (modulationSamples);
 
         const float source = (i & 1) != 0 ? diffusedR : diffusedL;
         const float injection = parameters.freeze ? 0.0f : source * 0.105f;
-        const float delayed = delays[index].process (injection + mixedFeedback[index] * feedbackGain * densityScale);
+        const float feedbackGain = parameters.freeze ? 0.9995f : feedbackGains[index];
+        const float delayed = delays[index].process (
+            injection + mixedFeedback[index] * feedbackGain * densityScale);
 
         dampingState[index] = delayed * (1.0f - dampingCoefficient)
                               + dampingState[index] * dampingCoefficient;
-        const float diffusionMix = juce::jlimit (0.0f, 1.0f, parameters.diffusionPercent * 0.01f);
         feedback[index] = juce::jmap (diffusionMix, delayed, dampingState[index]);
 
         const float tap = feedback[index] * 0.115f;

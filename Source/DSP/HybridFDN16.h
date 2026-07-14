@@ -40,6 +40,7 @@ public:
     void processStereo (float inputL, float inputR, float& outputL, float& outputR) noexcept;
 
 private:
+    void updateFDNCoefficients() noexcept;
     float processHighPass (float input, float& inputState, float& outputState) noexcept;
     float processLowPass (float input, float& state) noexcept;
 
@@ -49,6 +50,8 @@ private:
     Matrix16::Vector dampingState {};
     Matrix16::Vector phases {};
     Matrix16::Vector rates {};
+    Matrix16::Vector baseDelaySamples {};
+    Matrix16::Vector feedbackGains {};
 
     Diffuser diffuser;
     EarlyReflection earlyReflection;
@@ -59,11 +62,13 @@ private:
     StereoWidth stereoWidth;
     Limiter limiter;
 
-    std::array<float, 16> baseMs {
-        31.1f, 37.7f, 41.3f, 43.9f,
-        47.3f, 53.1f, 59.3f, 61.7f,
-        67.9f, 71.3f, 73.9f, 79.7f,
-        83.9f, 89.3f, 97.1f, 101.9f
+    // Prime delay lengths referenced to 48 kHz.
+    // Scaling by sample rate and Size preserves the decorrelated timing ratios.
+    static constexpr std::array<int, 16> primeDelaySamples48k {
+        1493, 1801, 1987, 2111,
+        2273, 2549, 2843, 2969,
+        3253, 3413, 3547, 3821,
+        4027, 4283, 4663, 4889
     };
 
     Parameters parameters;
@@ -72,6 +77,7 @@ private:
     float densityScale = 0.95f;
     float lowPassCoefficient = 0.5f;
     float highPassCoefficient = 0.99f;
+    float dampingCoefficient = 0.5f;
     float toneGain = 1.0f;
     float modulationQualityScale = 1.0f;
     float hpInputL = 0.0f, hpInputR = 0.0f;
