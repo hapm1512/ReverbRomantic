@@ -17,6 +17,20 @@ constexpr std::array<const char*, 16> suffixes {
     " %", " s", " x", " ms", " %", " %", " dB", " dB",
     " %", " %", " %", " %", " %", " Hz", " Hz", " dB"
 };
+
+constexpr std::array<const char*, 5> sidechainParameterIds {
+    Parameters::IDs::sidechainThreshold,
+    Parameters::IDs::sidechainAmount,
+    Parameters::IDs::sidechainAttack,
+    Parameters::IDs::sidechainRelease,
+    Parameters::IDs::sidechainHPF
+};
+constexpr std::array<const char*, 5> sidechainNames {
+    "THRESHOLD", "AMOUNT", "ATTACK", "RELEASE", "DETECT HPF"
+};
+constexpr std::array<const char*, 5> sidechainSuffixes {
+    " dB", " %", " ms", " ms", " Hz"
+};
 }
 
 ReverbRomanticAudioProcessorEditor::ReverbRomanticAudioProcessorEditor (ReverbRomanticAudioProcessor& p)
@@ -24,8 +38,8 @@ ReverbRomanticAudioProcessorEditor::ReverbRomanticAudioProcessorEditor (ReverbRo
 {
     setLookAndFeel (&laf);
     setResizable (true, true);
-    setResizeLimits (860, 560, 1600, 980);
-    setSize (1180, 720);
+    setResizeLimits (900, 650, 1600, 1080);
+    setSize (1180, 820);
 
     title.setText ("REVERB ROMANTIC", juce::dontSendNotification);
     title.setJustificationType (juce::Justification::centredLeft);
@@ -194,6 +208,25 @@ ReverbRomanticAudioProcessorEditor::ReverbRomanticAudioProcessorEditor (ReverbRo
         sliderAttachments[i] = std::make_unique<SA> (processor.apvts, parameterIds[i], sliders[i]);
     }
 
+    for (size_t i = 0; i < sidechainSliders.size(); ++i)
+    {
+        setupSidechainSlider (sidechainSliders[i], sidechainLabels[i],
+                              sidechainNames[i], sidechainSuffixes[i]);
+        sidechainSliderAttachments[i] = std::make_unique<SA> (
+            processor.apvts, sidechainParameterIds[i], sidechainSliders[i]);
+    }
+
+    sidechainEnable.setClickingTogglesState (true);
+    sidechainEnableAttachment = std::make_unique<BA> (
+        processor.apvts, Parameters::IDs::sidechainEnable, sidechainEnable);
+    addAndMakeVisible (sidechainEnable);
+
+    sidechainStatus.setText ("SC: DISCONNECTED", juce::dontSendNotification);
+    sidechainStatus.setJustificationType (juce::Justification::centred);
+    sidechainStatus.setColour (juce::Label::textColourId, RomanticTheme::dim);
+    sidechainStatus.setFont (juce::Font (juce::FontOptions (11.0f, juce::Font::bold)));
+    addAndMakeVisible (sidechainStatus);
+
     addAndMakeVisible (freeze);
     addAndMakeVisible (bypass);
     freeze.setClickingTogglesState (true);
@@ -234,6 +267,27 @@ void ReverbRomanticAudioProcessorEditor::setupSlider (juce::Slider& slider, juce
     addAndMakeVisible (label);
 }
 
+void ReverbRomanticAudioProcessorEditor::setupSidechainSlider (
+    juce::Slider& slider,
+    juce::Label& label,
+    const juce::String& name,
+    const juce::String& suffix)
+{
+    slider.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
+    slider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 72, 18);
+    slider.setTextValueSuffix (suffix);
+    slider.setMouseDragSensitivity (220);
+    slider.setScrollWheelEnabled (true);
+
+    label.setText (name, juce::dontSendNotification);
+    label.setJustificationType (juce::Justification::centred);
+    label.setColour (juce::Label::textColourId, RomanticTheme::text);
+    label.setFont (juce::Font (juce::FontOptions (10.5f, juce::Font::bold)));
+
+    addAndMakeVisible (slider);
+    addAndMakeVisible (label);
+}
+
 void ReverbRomanticAudioProcessorEditor::paint (juce::Graphics& g)
 {
     juce::ColourGradient background (RomanticTheme::bgTop, 0.0f, 0.0f,
@@ -249,6 +303,9 @@ void ReverbRomanticAudioProcessorEditor::paint (juce::Graphics& g)
     };
     for (size_t i = 0; i < panelBounds.size(); ++i)
         drawPanel (g, panelBounds[i], panelNames[i]);
+
+    if (! sidechainPanelBounds.isEmpty())
+        drawPanel (g, sidechainPanelBounds, "SIDECHAIN DUCKING");
 }
 
 void ReverbRomanticAudioProcessorEditor::drawPanel (juce::Graphics& g, juce::Rectangle<int> area,
@@ -323,6 +380,28 @@ void ReverbRomanticAudioProcessorEditor::resized()
     categoryLabel.setBounds (categoryArea.removeFromTop (17));
     categoryBox.setBounds (categoryArea.removeFromTop (34));
 
+    sidechainPanelBounds = area.removeFromBottom (122).reduced (18, 6);
+    {
+        auto inner = sidechainPanelBounds.reduced (10);
+        inner.removeFromTop (30);
+
+        auto statusArea = inner.removeFromLeft (132);
+        sidechainEnable.setBounds (statusArea.removeFromTop (34).reduced (4, 2));
+        sidechainStatus.setBounds (statusArea.removeFromTop (30).reduced (2, 1));
+
+        inner.removeFromLeft (8);
+        const int cellWidth = juce::jmax (1, inner.getWidth() / 5);
+
+        for (size_t i = 0; i < sidechainSliders.size(); ++i)
+        {
+            auto cell = inner.removeFromLeft (i + 1 == sidechainSliders.size()
+                                                ? inner.getWidth()
+                                                : cellWidth);
+            sidechainLabels[i].setBounds (cell.removeFromTop (18));
+            sidechainSliders[i].setBounds (cell.reduced (3, 0));
+        }
+    }
+
     auto content = area.reduced (18, 10);
     auto meterStrip = content.removeFromRight (98);
     inputMeter.setBounds (meterStrip.removeFromLeft (46));
@@ -393,6 +472,21 @@ void ReverbRomanticAudioProcessorEditor::timerCallback()
     redoButton.setEnabled (processor.canRedoPresetChange());
     snapshotAButton.setToggleState (! processor.isSnapshotBActive(), juce::dontSendNotification);
     snapshotBButton.setToggleState (processor.isSnapshotBActive(), juce::dontSendNotification);
+
+    const bool connected = processor.isSidechainConnected();
+    const float peak = processor.getSidechainPeak();
+    const bool detecting = connected && peak > 0.001f;
+
+    sidechainStatus.setText (
+        connected
+            ? (detecting ? "SC: DETECTING" : "SC: CONNECTED")
+            : "SC: DISCONNECTED",
+        juce::dontSendNotification);
+
+    sidechainStatus.setColour (
+        juce::Label::textColourId,
+        detecting ? RomanticTheme::accentBright
+                  : (connected ? RomanticTheme::text : RomanticTheme::dim));
 }
 
 void ReverbRomanticAudioProcessorEditor::refreshUserPresetList()

@@ -30,6 +30,8 @@ private:
     void refreshUserPresetList();
     void updateFavouriteButton();
     void drawPanel (juce::Graphics&, juce::Rectangle<int>, const juce::String&) const;
+    void setupSidechainSlider (juce::Slider&, juce::Label&,
+                               const juce::String&, const juce::String&);
 
     ReverbRomanticAudioProcessor& processor;
     RomanticLookAndFeel laf;
@@ -38,6 +40,8 @@ private:
     juce::ComboBox categoryBox, presetBox, algorithmBox, qualityBox;
     juce::TextButton previousPreset { "<" }, nextPreset { ">" }, randomPreset { "RND" };
     juce::ToggleButton freeze { "FREEZE" }, bypass { "BYPASS" };
+    juce::ToggleButton sidechainEnable { "SIDECHAIN" };
+    juce::Label sidechainStatus;
 
     juce::ComboBox userPresetBox;
     juce::TextButton favouriteButton { "FAV" };
@@ -52,9 +56,12 @@ private:
     std::vector<int> visiblePresetIndexes;
 
     std::array<juce::Slider, 16> sliders;
+    std::array<juce::Slider, 5> sidechainSliders;
+    std::array<juce::Label, 5> sidechainLabels;
     std::array<juce::Label, 16> sliderLabels;
     std::array<std::unique_ptr<SA>, 16> sliderAttachments;
-    std::unique_ptr<BA> freezeAttachment, bypassAttachment;
+    std::array<std::unique_ptr<SA>, 5> sidechainSliderAttachments;
+    std::unique_ptr<BA> freezeAttachment, bypassAttachment, sidechainEnableAttachment;
     std::unique_ptr<CA> algorithmAttachment, qualityAttachment;
 
     Meter inputMeter { "INPUT" };
@@ -63,6 +70,7 @@ private:
     BottomBar bottomBar;
 
     std::array<juce::Rectangle<int>, 4> panelBounds;
+    juce::Rectangle<int> sidechainPanelBounds;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ReverbRomanticAudioProcessorEditor)
 };
