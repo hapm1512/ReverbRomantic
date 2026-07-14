@@ -51,6 +51,7 @@ public:
         float brightnessDb = -1.0f;
         int quality = 1;
         bool freeze = false;
+        bool processOutputStage = true;
         RoomModel roomModel = RoomModel::hall;
     };
 

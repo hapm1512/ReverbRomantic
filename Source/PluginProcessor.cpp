@@ -333,6 +333,9 @@ void ReverbRomanticAudioProcessor::prepareToPlay (double sampleRate,
     engine.prepare (spec);
     freezeProcessor.prepare (spec);
     shimmer.prepare (spec);
+    postDucking.prepare (spec);
+    postWidth.prepare (spec);
+    postLimiter.prepare (spec);
 }
 
 void ReverbRomanticAudioProcessor::releaseResources()
@@ -340,6 +343,9 @@ void ReverbRomanticAudioProcessor::releaseResources()
     engine.reset();
     freezeProcessor.reset();
     shimmer.reset();
+    postDucking.reset();
+    postWidth.reset();
+    postLimiter.reset();
 }
 
 bool ReverbRomanticAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -572,7 +578,8 @@ void ReverbRomanticAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     dspParameters.densityPercent = apvts.getRawParameterValue (Parameters::IDs::density)->load();
     dspParameters.modulationPercent = apvts.getRawParameterValue (Parameters::IDs::modulation)->load();
     dspParameters.bloomPercent = apvts.getRawParameterValue (Parameters::IDs::bloom)->load();
-    dspParameters.duckingPercent = apvts.getRawParameterValue (Parameters::IDs::ducking)->load();
+    // Epic 5C.3: ducking is applied after Freeze and Shimmer.
+    dspParameters.duckingPercent = 0.0f;
 
     dspParameters.sidechainEnabled =
         apvts.getRawParameterValue (Parameters::IDs::sidechainEnable)->load() > 0.5f;
@@ -595,6 +602,7 @@ void ReverbRomanticAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
         apvts.getRawParameterValue (Parameters::IDs::quality)->load());
     dspParameters.freeze =
         apvts.getRawParameterValue (Parameters::IDs::freeze)->load() > 0.5f;
+    dspParameters.processOutputStage = false;
 
     const auto algorithm = sanitiseAlgorithm (
         apvts.getRawParameterValue (Parameters::IDs::algorithm)->load());
@@ -626,6 +634,21 @@ void ReverbRomanticAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     freezeParameters.damping =
         apvts.getRawParameterValue (Parameters::IDs::freezeDamp)->load() * 0.01f;
     freezeProcessor.setParameters (freezeParameters);
+
+    postDucking.setEnabled (
+        apvts.getRawParameterValue (Parameters::IDs::duckingEnable)->load() > 0.5f);
+    postDucking.setThresholdDb (
+        apvts.getRawParameterValue (Parameters::IDs::duckThreshold)->load());
+    postDucking.setDepth (
+        apvts.getRawParameterValue (Parameters::IDs::duckDepth)->load());
+    postDucking.setAttackMs (
+        apvts.getRawParameterValue (Parameters::IDs::duckAttack)->load());
+    postDucking.setReleaseMs (
+        apvts.getRawParameterValue (Parameters::IDs::duckRelease)->load());
+    postDucking.setKneeDb (
+        apvts.getRawParameterValue (Parameters::IDs::duckKnee)->load());
+
+    postWidth.setWidth (dspParameters.widthPercent);
 
     const bool isMono = buffer.getNumChannels() == 1;
 
@@ -682,6 +705,12 @@ for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
         shimmer.processStereo (wetL, wetR, shimmeredL, shimmeredR);
         wetL = shimmeredL;
         wetR = shimmeredR;
+
+        // Fixed Epic 5 pipeline:
+        // FDN -> Freeze -> Shimmer -> Ducking -> Width -> Limiter.
+        postDucking.process (dryL, dryR, wetL, wetR);
+        postWidth.process (wetL, wetR);
+        postLimiter.process (wetL, wetR);
 
         if (isMono)
         {

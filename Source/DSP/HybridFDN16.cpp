@@ -379,14 +379,18 @@ void HybridFDN16::processStereo (float inputL,
     outputR = processLowPass (outputR, lpStateR);
 
     tailBloom.process (outputL, outputR);
-    stereoWidth.process (outputL, outputR);
+
+    if (parameters.processOutputStage)
+        stereoWidth.process (outputL, outputR);
 
     // External sidechain affects only the wet reverb signal.
     const float externalDuckGain = processSidechainDetector (sidechainL, sidechainR);
     outputL *= externalDuckGain;
     outputR *= externalDuckGain;
 
-    // Existing internal ducking remains available for compatibility.
+    // Existing internal ducking remains available for legacy callers.
     ducking.process (inputL, inputR, outputL, outputR);
-    limiter.process (outputL, outputR);
+
+    if (parameters.processOutputStage)
+        limiter.process (outputL, outputR);
 }

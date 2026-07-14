@@ -6,6 +6,9 @@
 #include <vector>
 #include "DSP/HybridFDN16.h"
 #include "DSP/ShimmerProcessor.h"
+#include "DSP/Ducking.h"
+#include "DSP/StereoWidth.h"
+#include "DSP/Limiter.h"
 #include "DSP/FreezeProcessor.h"
 #include "Parameters/ParameterLayout.h"
 
@@ -112,6 +115,9 @@ private:
     HybridFDN16 engine;
     FreezeProcessor freezeProcessor;
     ShimmerProcessor shimmer;
+    Ducking postDucking;
+    StereoWidth postWidth;
+    Limiter postLimiter;
 
     juce::ValueTree snapshotA;
     juce::ValueTree snapshotB;
