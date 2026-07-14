@@ -327,12 +327,17 @@ void ReverbRomanticAudioProcessor::storePersistentMetadata()
 void ReverbRomanticAudioProcessor::prepareToPlay (double sampleRate,
                                                    int samplesPerBlock)
 {
-    engine.prepare ({ sampleRate, static_cast<juce::uint32> (samplesPerBlock), 2 });
+    const juce::dsp::ProcessSpec spec { sampleRate,
+                                        static_cast<juce::uint32> (samplesPerBlock),
+                                        2 };
+    engine.prepare (spec);
+    shimmer.prepare (spec);
 }
 
 void ReverbRomanticAudioProcessor::releaseResources()
 {
     engine.reset();
+    shimmer.reset();
 }
 
 bool ReverbRomanticAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -594,6 +599,21 @@ void ReverbRomanticAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     applyAlgorithmProfile (algorithm, dspParameters);
     engine.setParameters (dspParameters);
 
+    ShimmerProcessor::Parameters shimmerParameters;
+    shimmerParameters.enabled =
+        apvts.getRawParameterValue (Parameters::IDs::shimmerEnable)->load() > 0.5f;
+    shimmerParameters.mixPercent =
+        apvts.getRawParameterValue (Parameters::IDs::shimmerMix)->load();
+    shimmerParameters.pitchSemitones =
+        apvts.getRawParameterValue (Parameters::IDs::shimmerPitch)->load() < 0.5f
+            ? 7.0f
+            : 12.0f;
+    shimmerParameters.feedbackPercent =
+        apvts.getRawParameterValue (Parameters::IDs::shimmerFeedback)->load();
+    shimmerParameters.toneHz =
+        apvts.getRawParameterValue (Parameters::IDs::shimmerTone)->load();
+    shimmer.setParameters (shimmerParameters);
+
     const bool isMono = buffer.getNumChannels() == 1;
 
     
@@ -637,6 +657,12 @@ for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
         {
             engine.processStereo (dryL, dryR, wetL, wetR);
         }
+
+        float shimmeredL = wetL;
+        float shimmeredR = wetR;
+        shimmer.processStereo (wetL, wetR, shimmeredL, shimmeredR);
+        wetL = shimmeredL;
+        wetR = shimmeredR;
 
         if (isMono)
         {
