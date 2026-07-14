@@ -28,24 +28,43 @@ void ReverbRomanticAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     const float outputGain = juce::Decibels::decibelsToGain (
         apvts.getRawParameterValue (Parameters::IDs::output)->load());
 
-    engine.setParameters (
-        apvts.getRawParameterValue (Parameters::IDs::decay)->load()
-            * apvts.getRawParameterValue (Parameters::IDs::time)->load(),
-        apvts.getRawParameterValue (Parameters::IDs::size)->load(),
-        apvts.getRawParameterValue (Parameters::IDs::highCut)->load(),
-        apvts.getRawParameterValue (Parameters::IDs::diffusion)->load(),
-        apvts.getRawParameterValue (Parameters::IDs::density)->load(),
-        apvts.getRawParameterValue (Parameters::IDs::modulation)->load(),
-        apvts.getRawParameterValue (Parameters::IDs::freeze)->load() > 0.5f);
+    HybridFDN16::Parameters dspParameters;
+    dspParameters.decaySeconds = apvts.getRawParameterValue (Parameters::IDs::decay)->load()
+                                 * apvts.getRawParameterValue (Parameters::IDs::time)->load();
+    dspParameters.preDelayMs = apvts.getRawParameterValue (Parameters::IDs::preDelay)->load();
+    dspParameters.sizePercent = apvts.getRawParameterValue (Parameters::IDs::size)->load();
+    dspParameters.widthPercent = apvts.getRawParameterValue (Parameters::IDs::width)->load();
+    dspParameters.diffusionPercent = apvts.getRawParameterValue (Parameters::IDs::diffusion)->load();
+    dspParameters.densityPercent = apvts.getRawParameterValue (Parameters::IDs::density)->load();
+    dspParameters.modulationPercent = apvts.getRawParameterValue (Parameters::IDs::modulation)->load();
+    dspParameters.bloomPercent = apvts.getRawParameterValue (Parameters::IDs::bloom)->load();
+    dspParameters.duckingPercent = apvts.getRawParameterValue (Parameters::IDs::ducking)->load();
+    dspParameters.lowCutHz = apvts.getRawParameterValue (Parameters::IDs::lowCut)->load();
+    dspParameters.highCutHz = apvts.getRawParameterValue (Parameters::IDs::highCut)->load();
+    dspParameters.warmthDb = apvts.getRawParameterValue (Parameters::IDs::warmth)->load();
+    dspParameters.brightnessDb = apvts.getRawParameterValue (Parameters::IDs::brightness)->load();
+    dspParameters.quality = static_cast<int> (apvts.getRawParameterValue (Parameters::IDs::quality)->load());
+    dspParameters.freeze = apvts.getRawParameterValue (Parameters::IDs::freeze)->load() > 0.5f;
+    engine.setParameters (dspParameters);
 
+    const bool isMono = buffer.getNumChannels() == 1;
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
     {
         const float dryL = left[sample];
-        const float dryR = right[sample];
+        const float dryR = isMono ? dryL : right[sample];
         float wetL = 0.0f, wetR = 0.0f;
         engine.processStereo (dryL, dryR, wetL, wetR);
-        left[sample] = (dryL * (1.0f - mix) + wetL * mix) * outputGain;
-        right[sample] = (dryR * (1.0f - mix) + wetR * mix) * outputGain;
+
+        if (isMono)
+        {
+            const float wetMono = 0.5f * (wetL + wetR);
+            left[sample] = (dryL * (1.0f - mix) + wetMono * mix) * outputGain;
+        }
+        else
+        {
+            left[sample] = (dryL * (1.0f - mix) + wetL * mix) * outputGain;
+            right[sample] = (dryR * (1.0f - mix) + wetR * mix) * outputGain;
+        }
     }
 
     outputPeakL.store (buffer.getMagnitude (0, 0, buffer.getNumSamples()));
