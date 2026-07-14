@@ -48,8 +48,6 @@ private:
     std::array<RomanticDelayLine, 2> preDelay;
     Matrix16::Vector feedback {};
     Matrix16::Vector dampingState {};
-    Matrix16::Vector phases {};
-    Matrix16::Vector rates {};
     Matrix16::Vector baseDelaySamples {};
     Matrix16::Vector feedbackGains {};
 
@@ -79,7 +77,8 @@ private:
     float highPassCoefficient = 0.99f;
     float dampingCoefficient = 0.5f;
     float toneGain = 1.0f;
-    float modulationQualityScale = 1.0f;
+    float modulationDepthSamples = 0.0f;
+    float lateOutputGain = 1.0f;
     float hpInputL = 0.0f, hpInputR = 0.0f;
     float hpOutputL = 0.0f, hpOutputR = 0.0f;
     float lpStateL = 0.0f, lpStateR = 0.0f;

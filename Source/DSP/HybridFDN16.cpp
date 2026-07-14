@@ -6,12 +6,8 @@ void HybridFDN16::prepare (const juce::dsp::ProcessSpec& spec)
 {
     sampleRate = juce::jmax (1.0, spec.sampleRate);
 
-    for (int i = 0; i < 16; ++i)
-    {
-        delays[static_cast<size_t> (i)].prepare (sampleRate, 0.5);
-        phases[static_cast<size_t> (i)] = static_cast<float> (i) / 16.0f;
-        rates[static_cast<size_t> (i)] = 0.07f + 0.011f * static_cast<float> (i);
-    }
+    for (auto& delay : delays)
+        delay.prepare (sampleRate, 0.5);
 
     for (auto& delay : preDelay)
         delay.prepare (sampleRate, 0.3);
@@ -113,8 +109,23 @@ void HybridFDN16::setParameters (const Parameters& newParameters) noexcept
                                    * parameters.highCutHz
                                    / static_cast<float> (sampleRate));
     toneGain = juce::Decibels::decibelsToGain (parameters.warmthDb * 0.12f);
-    modulationQualityScale = std::array<float, 4> { 0.55f, 0.8f, 1.0f, 1.15f }
+    const float qualityScale = std::array<float, 4> { 0.55f, 0.8f, 1.0f, 1.15f }
         [static_cast<size_t> (parameters.quality)];
+
+    // Modulation V2 returns a normalized per-line value. Keep the maximum
+    // movement below 0.40 ms so pitch movement remains inaudible.
+    const float maxDepthMs = 0.34f * qualityScale;
+    modulationDepthSamples = maxDepthMs * 0.001f
+                             * static_cast<float> (sampleRate);
+
+    // Compensate the denser diffuser and summed 16-line output.
+    const float densityNormalisation = juce::jmap (
+        juce::jlimit (0.0f, 1.0f, parameters.densityPercent * 0.01f),
+        1.04f, 0.88f);
+    const float diffusionNormalisation = juce::jmap (
+        juce::jlimit (0.0f, 1.0f, parameters.diffusionPercent * 0.01f),
+        1.0f, 0.92f);
+    lateOutputGain = densityNormalisation * diffusionNormalisation;
     highPassCoefficient = std::exp (-juce::MathConstants<float>::twoPi
                                     * parameters.lowCutHz
                                     / static_cast<float> (sampleRate));
@@ -157,25 +168,18 @@ void HybridFDN16::processStereo (float inputL,
 
     float lateL = 0.0f;
     float lateR = 0.0f;
-    const float globalModulation = modulationSource.nextValue();
+    // Advance the commercial modulation engine once per audio sample.
+    // Per-line values are read below without any trigonometric work here.
+    modulationSource.nextValue();
+
     const float diffusionMix = juce::jlimit (0.0f, 1.0f,
                                               parameters.diffusionPercent * 0.01f);
 
     for (int i = 0; i < 16; ++i)
     {
         const auto index = static_cast<size_t> (i);
-        phases[index] += rates[index] / static_cast<float> (sampleRate);
-
-        if (phases[index] >= 1.0f)
-            phases[index] -= 1.0f;
-
-        const float localLfo = std::sin (juce::MathConstants<float>::twoPi
-                                         * phases[index]);
-        const float modulationMs = (localLfo * 0.75f + globalModulation * 0.25f)
-                                   * parameters.modulationPercent
-                                   * 0.008f * modulationQualityScale;
-        const float modulationSamples = modulationMs * 0.001f
-                                        * static_cast<float> (sampleRate);
+        const float modulationSamples = modulationSource.getOffset (i)
+                                        * modulationDepthSamples;
         delays[index].setModulationOffset (modulationSamples);
 
         const float source = (i & 1) != 0 ? diffusedR : diffusedL;
@@ -193,8 +197,8 @@ void HybridFDN16::processStereo (float inputL,
         lateR += (((i + 1) % 4) < 2 ? 1.0f : -1.0f) * tap;
     }
 
-    outputL = earlyL * 0.32f + lateL;
-    outputR = earlyR * 0.32f + lateR;
+    outputL = earlyL * 0.32f + lateL * lateOutputGain;
+    outputR = earlyR * 0.32f + lateR * lateOutputGain;
 
     outputL = processHighPass (outputL * toneGain, hpInputL, hpOutputL);
     outputR = processHighPass (outputR * toneGain, hpInputR, hpOutputR);
