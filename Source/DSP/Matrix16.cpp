@@ -1,2 +1,20 @@
 #include "Matrix16.h"
-void Matrix16::hadamard(Vector& v) noexcept { for(int step=1;step<16;step*=2) for(int i=0;i<16;i+=step*2) for(int j=0;j<step;++j){auto a=v[(size_t)(i+j)],b=v[(size_t)(i+j+step)];v[(size_t)(i+j)]=a+b;v[(size_t)(i+j+step)]=a-b;} for(auto& x:v)x*=0.25f; }
+
+void Matrix16::householder (Vector& values) noexcept
+{
+    float sum = 0.0f;
+
+    for (const auto value : values)
+        sum += value;
+
+    // 2 / 16 = 1 / 8.
+    const float reflection = sum * 0.125f;
+
+    for (auto& value : values)
+        value -= reflection;
+}
+
+void Matrix16::hadamard (Vector& values) noexcept
+{
+    householder (values);
+}
