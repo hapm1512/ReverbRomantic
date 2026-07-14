@@ -1,8 +1,12 @@
 #pragma once
+
 #include <JuceHeader.h>
 #include <array>
-#include "DelayLine.h"
+#include <cstddef>
+#include <vector>
 
+// Dual-stage stereo diffusion network.
+// All memory is allocated by prepare(); processStereo() is realtime-safe.
 class Diffuser
 {
 public:
@@ -14,16 +18,21 @@ public:
 private:
     struct AllPass
     {
-        RomanticDelayLine delay;
-        float state = 0.0f;
-        float gain = 0.65f;
-
-        void prepare (double sampleRate, float milliseconds);
+        void prepare (double sampleRate, float milliseconds, float stageGain);
         void reset();
-        float process (float input) noexcept;
+        void setGain (float newGain) noexcept;
+        [[nodiscard]] float process (float input) noexcept;
+
+        std::vector<float> buffer;
+        std::size_t writePosition = 0;
+        float gain = 0.65f;
     };
 
-    std::array<AllPass, 4> leftStages;
-    std::array<AllPass, 4> rightStages;
+    static constexpr std::size_t stagesPerChannel = 8;
+    static constexpr std::size_t stageBoundary = 4;
+
+    std::array<AllPass, stagesPerChannel> leftStages;
+    std::array<AllPass, stagesPerChannel> rightStages;
+
     float amount = 0.88f;
 };
