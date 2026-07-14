@@ -36,6 +36,15 @@ public:
         float modulationPercent = 22.0f;
         float bloomPercent = 45.0f;
         float duckingPercent = 18.0f;
+
+        // External sidechain ducking. Disabled by default for compatibility.
+        bool sidechainEnabled = false;
+        float sidechainThresholdDb = -24.0f;
+        float sidechainAmountPercent = 50.0f;
+        float sidechainAttackMs = 8.0f;
+        float sidechainReleaseMs = 220.0f;
+        float sidechainHighPassHz = 120.0f;
+
         float lowCutHz = 120.0f;
         float highCutHz = 12000.0f;
         float warmthDb = 3.0f;
@@ -48,7 +57,20 @@ public:
     void prepare (const juce::dsp::ProcessSpec& spec);
     void reset();
     void setParameters (const Parameters& newParameters) noexcept;
-    void processStereo (float inputL, float inputR, float& outputL, float& outputR) noexcept;
+
+    // Legacy path: no external sidechain signal.
+    void processStereo (float inputL, float inputR,
+                        float& outputL, float& outputR) noexcept;
+
+    // External sidechain path used by the processor in Epic 4E.3.
+    void processStereo (float inputL, float inputR,
+                        float sidechainL, float sidechainR,
+                        float& outputL, float& outputR) noexcept;
+
+    float getSidechainGainReductionDb() const noexcept
+    {
+        return sidechainGainReductionDb;
+    }
 
 private:
     struct RoomProfile
@@ -72,6 +94,7 @@ private:
     void updateFDNCoefficients() noexcept;
     float processHighPass (float input, float& inputState, float& outputState) noexcept;
     float processLowPass (float input, float& state) noexcept;
+    float processSidechainDetector (float sidechainL, float sidechainR) noexcept;
 
     std::array<RomanticDelayLine, 16> delays;
     std::array<RomanticDelayLine, 2> preDelay;
@@ -116,4 +139,16 @@ private:
     float hpInputL = 0.0f, hpInputR = 0.0f;
     float hpOutputL = 0.0f, hpOutputR = 0.0f;
     float lpStateL = 0.0f, lpStateR = 0.0f;
+
+    // External sidechain detector state.
+    float sidechainHpfCoefficient = 0.0f;
+    float sidechainHpfInput = 0.0f;
+    float sidechainHpfOutput = 0.0f;
+    float sidechainEnvelope = 0.0f;
+    float sidechainGain = 1.0f;
+    float sidechainGainReductionDb = 0.0f;
+    float sidechainAttackCoefficient = 0.0f;
+    float sidechainReleaseCoefficient = 0.0f;
+    float sidechainThresholdLinear = 0.0630957f;
+    float sidechainMinimumGain = 1.0f;
 };

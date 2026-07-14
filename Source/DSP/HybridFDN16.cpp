@@ -78,6 +78,12 @@ void HybridFDN16::reset()
     hpInputL = hpInputR = 0.0f;
     hpOutputL = hpOutputR = 0.0f;
     lpStateL = lpStateR = 0.0f;
+
+    sidechainHpfInput = 0.0f;
+    sidechainHpfOutput = 0.0f;
+    sidechainEnvelope = 0.0f;
+    sidechainGain = 1.0f;
+    sidechainGainReductionDb = 0.0f;
 }
 
 void HybridFDN16::updateFDNCoefficients() noexcept
@@ -111,6 +117,16 @@ void HybridFDN16::setParameters (const Parameters& newParameters) noexcept
     parameters.modulationPercent = juce::jlimit (0.0f, 100.0f, parameters.modulationPercent);
     parameters.bloomPercent = juce::jlimit (0.0f, 100.0f, parameters.bloomPercent);
     parameters.duckingPercent = juce::jlimit (0.0f, 100.0f, parameters.duckingPercent);
+    parameters.sidechainThresholdDb = juce::jlimit (-60.0f, 0.0f,
+                                                     parameters.sidechainThresholdDb);
+    parameters.sidechainAmountPercent = juce::jlimit (0.0f, 100.0f,
+                                                       parameters.sidechainAmountPercent);
+    parameters.sidechainAttackMs = juce::jlimit (0.1f, 200.0f,
+                                                  parameters.sidechainAttackMs);
+    parameters.sidechainReleaseMs = juce::jlimit (10.0f, 3000.0f,
+                                                   parameters.sidechainReleaseMs);
+    parameters.sidechainHighPassHz = juce::jlimit (20.0f, 1000.0f,
+                                                    parameters.sidechainHighPassHz);
     parameters.lowCutHz = juce::jlimit (20.0f, 1000.0f, parameters.lowCutHz);
     parameters.highCutHz = juce::jlimit (1000.0f, 20000.0f, parameters.highCutHz);
     parameters.warmthDb = juce::jlimit (-12.0f, 12.0f, parameters.warmthDb);
@@ -195,6 +211,23 @@ void HybridFDN16::setParameters (const Parameters& newParameters) noexcept
     const float modelEnergy = 1.0f / juce::jmax (
         0.65f, 0.48f * roomProfile.earlyScale + 0.52f * roomProfile.lateScale);
     energyCompensation = densityEnergy * sizeEnergy * modelEnergy;
+
+    const float sampleRateFloat = static_cast<float> (sampleRate);
+    sidechainHpfCoefficient = std::exp (
+        -juce::MathConstants<float>::twoPi
+        * parameters.sidechainHighPassHz / sampleRateFloat);
+
+    sidechainAttackCoefficient = std::exp (
+        -1.0f / (0.001f * parameters.sidechainAttackMs * sampleRateFloat));
+    sidechainReleaseCoefficient = std::exp (
+        -1.0f / (0.001f * parameters.sidechainReleaseMs * sampleRateFloat));
+
+    sidechainThresholdLinear = juce::Decibels::decibelsToGain (
+        parameters.sidechainThresholdDb);
+
+    // Maximum attenuation is 24 dB at 100% amount.
+    sidechainMinimumGain = juce::Decibels::decibelsToGain (
+        -24.0f * parameters.sidechainAmountPercent * 0.01f);
 }
 
 float HybridFDN16::processHighPass (float input,
@@ -213,8 +246,74 @@ float HybridFDN16::processLowPass (float input, float& state) noexcept
     return state;
 }
 
+float HybridFDN16::processSidechainDetector (float sidechainL,
+                                               float sidechainR) noexcept
+{
+    if (! parameters.sidechainEnabled
+        || parameters.sidechainAmountPercent <= 0.0f)
+    {
+        sidechainGain += (1.0f - sidechainGain) * 0.02f;
+        sidechainGainReductionDb = juce::Decibels::gainToDecibels (
+            juce::jmax (sidechainGain, 0.000001f));
+        return sidechainGain;
+    }
+
+    const float mono = 0.5f * (sidechainL + sidechainR);
+
+    // One-pole high-pass removes low-frequency pumping from the detector.
+    const float filtered = sidechainHpfCoefficient
+                           * (sidechainHpfOutput + mono - sidechainHpfInput);
+    sidechainHpfInput = mono;
+    sidechainHpfOutput = filtered;
+
+    const float detectorInput = std::abs (filtered);
+    const float envelopeCoefficient = detectorInput > sidechainEnvelope
+                                        ? sidechainAttackCoefficient
+                                        : sidechainReleaseCoefficient;
+    sidechainEnvelope = detectorInput
+                        + envelopeCoefficient * (sidechainEnvelope - detectorInput);
+
+    // 6 dB soft knee around the threshold.
+    constexpr float kneeRatio = 1.9952623f;
+    const float kneeStart = sidechainThresholdLinear / kneeRatio;
+    const float kneeEnd = sidechainThresholdLinear * kneeRatio;
+
+    float activity = 0.0f;
+    if (sidechainEnvelope >= kneeEnd)
+    {
+        activity = 1.0f;
+    }
+    else if (sidechainEnvelope > kneeStart)
+    {
+        const float normalised = (sidechainEnvelope - kneeStart)
+                                 / juce::jmax (0.000001f, kneeEnd - kneeStart);
+        activity = normalised * normalised * (3.0f - 2.0f * normalised);
+    }
+
+    const float targetGain = juce::jmap (activity, 1.0f, sidechainMinimumGain);
+    const float gainCoefficient = targetGain < sidechainGain
+                                    ? sidechainAttackCoefficient
+                                    : sidechainReleaseCoefficient;
+    sidechainGain = targetGain
+                    + gainCoefficient * (sidechainGain - targetGain);
+
+    sidechainGainReductionDb = juce::Decibels::gainToDecibels (
+        juce::jmax (sidechainGain, 0.000001f));
+    return sidechainGain;
+}
+
 void HybridFDN16::processStereo (float inputL,
                                  float inputR,
+                                 float& outputL,
+                                 float& outputR) noexcept
+{
+    processStereo (inputL, inputR, 0.0f, 0.0f, outputL, outputR);
+}
+
+void HybridFDN16::processStereo (float inputL,
+                                 float inputR,
+                                 float sidechainL,
+                                 float sidechainR,
                                  float& outputL,
                                  float& outputR) noexcept
 {
@@ -281,6 +380,13 @@ void HybridFDN16::processStereo (float inputL,
 
     tailBloom.process (outputL, outputR);
     stereoWidth.process (outputL, outputR);
+
+    // External sidechain affects only the wet reverb signal.
+    const float externalDuckGain = processSidechainDetector (sidechainL, sidechainR);
+    outputL *= externalDuckGain;
+    outputR *= externalDuckGain;
+
+    // Existing internal ducking remains available for compatibility.
     ducking.process (inputL, inputR, outputL, outputR);
     limiter.process (outputL, outputR);
 }
