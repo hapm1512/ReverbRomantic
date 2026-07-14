@@ -1,10 +1,11 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include <array>
+#include <vector>
 #include "PitchShifter.h"
 
-// Stereo shimmer building block.
-// It produces a protected pitch-shifted feedback texture without owning the FDN.
+// Stereo shimmer processor with protected feedback, smoothing and decorrelation.
 class ShimmerProcessor
 {
 public:
@@ -28,7 +29,18 @@ public:
     [[nodiscard]] float getFeedbackRight() const noexcept { return feedbackR; }
 
 private:
+    struct Decorrelator
+    {
+        std::vector<float> buffer;
+        std::size_t writePosition = 0u;
+        std::size_t delaySamples = 1u;
+    };
+
     [[nodiscard]] float processToneFilter (float input, float& state) noexcept;
+    [[nodiscard]] float processDcBlocker (float input,
+                                          float& previousInput,
+                                          float& previousOutput) const noexcept;
+    [[nodiscard]] float processDecorrelator (Decorrelator& delay, float input) noexcept;
     [[nodiscard]] static float softLimit (float input) noexcept;
     void updateToneCoefficient (float toneHz) noexcept;
 
@@ -40,10 +52,17 @@ private:
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> bypassSmoother;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Multiplicative> toneSmoother;
 
+    std::array<Decorrelator, 2> decorrelators;
+
     double sampleRate = 44100.0;
     float toneCoefficient = 0.5f;
+    float dcBlockCoefficient = 0.995f;
     float toneStateL = 0.0f;
     float toneStateR = 0.0f;
+    float dcInputL = 0.0f;
+    float dcInputR = 0.0f;
+    float dcOutputL = 0.0f;
+    float dcOutputR = 0.0f;
     float feedbackL = 0.0f;
     float feedbackR = 0.0f;
 };
