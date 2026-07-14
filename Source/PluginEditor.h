@@ -29,8 +29,8 @@ private:
     ReverbRomanticAudioProcessor& processor;
     RomanticLookAndFeel laf;
 
-    juce::Label title, subtitle, presetLabel, qualityLabel;
-    juce::ComboBox presetBox, qualityBox;
+    juce::Label title, subtitle, presetLabel, algorithmLabel, qualityLabel;
+    juce::ComboBox presetBox, algorithmBox, qualityBox;
     juce::TextButton previousPreset { "<" }, nextPreset { ">" };
     juce::ToggleButton freeze { "FREEZE" }, bypass { "BYPASS" };
 
@@ -38,7 +38,7 @@ private:
     std::array<juce::Label, 16> sliderLabels;
     std::array<std::unique_ptr<SA>, 16> sliderAttachments;
     std::unique_ptr<BA> freezeAttachment, bypassAttachment;
-    std::unique_ptr<CA> qualityAttachment;
+    std::unique_ptr<CA> algorithmAttachment, qualityAttachment;
 
     Meter inputMeter { "INPUT" };
     Meter outputMeter { "OUTPUT" };

@@ -39,8 +39,9 @@ ReverbRomanticAudioProcessorEditor::ReverbRomanticAudioProcessorEditor (ReverbRo
     addAndMakeVisible (subtitle);
 
     presetLabel.setText ("PRESET", juce::dontSendNotification);
+    algorithmLabel.setText ("ALGORITHM", juce::dontSendNotification);
     qualityLabel.setText ("QUALITY", juce::dontSendNotification);
-    for (auto* label : { &presetLabel, &qualityLabel })
+    for (auto* label : { &presetLabel, &algorithmLabel, &qualityLabel })
     {
         label->setColour (juce::Label::textColourId, RomanticTheme::dim);
         label->setFont (juce::Font (juce::FontOptions (11.0f, juce::Font::bold)));
@@ -49,8 +50,11 @@ ReverbRomanticAudioProcessorEditor::ReverbRomanticAudioProcessorEditor (ReverbRo
 
     presetBox.addItemList ({ "Romantic Vocal", "Warm Ballad", "Wide Lyrical", "Long Dream", "Bright Hall" }, 1);
     presetBox.setSelectedId (1, juce::dontSendNotification);
+    algorithmBox.addItemList ({ "Romantic Hall", "Vocal Plate", "Studio Room",
+                                "Chamber", "Cathedral", "Ambient" }, 1);
     qualityBox.addItemList ({ "Eco", "Standard", "High", "Ultra" }, 1);
     addAndMakeVisible (presetBox);
+    addAndMakeVisible (algorithmBox);
     addAndMakeVisible (qualityBox);
     addAndMakeVisible (previousPreset);
     addAndMakeVisible (nextPreset);
@@ -79,6 +83,7 @@ ReverbRomanticAudioProcessorEditor::ReverbRomanticAudioProcessorEditor (ReverbRo
     bypass.setClickingTogglesState (true);
     freezeAttachment = std::make_unique<BA> (processor.apvts, Parameters::IDs::freeze, freeze);
     bypassAttachment = std::make_unique<BA> (processor.apvts, Parameters::IDs::bypass, bypass);
+    algorithmAttachment = std::make_unique<CA> (processor.apvts, Parameters::IDs::algorithm, algorithmBox);
     qualityAttachment = std::make_unique<CA> (processor.apvts, Parameters::IDs::quality, qualityBox);
 
     addAndMakeVisible (inputMeter);
@@ -160,11 +165,15 @@ void ReverbRomanticAudioProcessorEditor::resized()
     auto freezeArea = controls.removeFromRight (100);
     freeze.setBounds (freezeArea.reduced (4, 13));
     controls.removeFromRight (8);
-    auto qualityArea = controls.removeFromRight (132);
+    auto qualityArea = controls.removeFromRight (118);
     qualityLabel.setBounds (qualityArea.removeFromTop (17));
     qualityBox.setBounds (qualityArea.removeFromTop (34));
     controls.removeFromRight (8);
-    auto presetArea = controls.removeFromRight (juce::jmin (300, controls.getWidth()));
+    auto algorithmArea = controls.removeFromRight (juce::jmin (176, controls.getWidth() / 2));
+    algorithmLabel.setBounds (algorithmArea.removeFromTop (17));
+    algorithmBox.setBounds (algorithmArea.removeFromTop (34));
+    controls.removeFromRight (8);
+    auto presetArea = controls.removeFromRight (juce::jmin (250, controls.getWidth()));
     presetLabel.setBounds (presetArea.removeFromTop (17));
     previousPreset.setBounds (presetArea.removeFromLeft (34).reduced (1));
     nextPreset.setBounds (presetArea.removeFromRight (34).reduced (1));
@@ -246,15 +255,23 @@ void ReverbRomanticAudioProcessorEditor::setParameterValue (const juce::String& 
 
 void ReverbRomanticAudioProcessorEditor::applyPreset (int presetIndex)
 {
-    struct Preset { float mix, decay, time, preDelay, size, width, warmth, brightness, diffusion, density, modulation, bloom, ducking, lowCut, highCut, output; };
+    struct Preset
+    {
+        int algorithm;
+        float mix, decay, time, preDelay, size, width, warmth, brightness;
+        float diffusion, density, modulation, bloom, ducking, lowCut, highCut, output;
+    };
+
     static constexpr std::array<Preset, 5> presets {{
-        { 35, 4.2f, 1.00f, 38, 110, 125, 3, -1, 88, 94, 22, 45, 18, 120, 12000, 0 },
-        { 28, 3.4f, 0.92f, 24, 95, 115, 5, -2, 82, 90, 14, 34, 12, 140, 10500, 0 },
-        { 42, 5.8f, 1.08f, 46, 135, 165, 2, 1, 92, 96, 28, 58, 22, 100, 14500, -1 },
-        { 48, 8.6f, 1.24f, 68, 158, 180, 4, -3, 95, 98, 35, 76, 28, 90, 9800, -2 },
-        { 32, 4.6f, 0.98f, 30, 120, 140, 0, 4, 86, 92, 18, 42, 16, 160, 16500, -1 }
+        { 0, 35, 4.2f, 1.00f, 38, 110, 125, 3, -1, 88, 94, 22, 45, 18, 120, 12000, 0 },
+        { 0, 28, 3.4f, 0.92f, 24, 95, 115, 5, -2, 82, 90, 14, 34, 12, 140, 10500, 0 },
+        { 0, 42, 5.8f, 1.08f, 46, 135, 165, 2, 1, 92, 96, 28, 58, 22, 100, 14500, -1 },
+        { 5, 48, 8.6f, 1.24f, 68, 158, 180, 4, -3, 95, 98, 35, 76, 28, 90, 9800, -2 },
+        { 4, 32, 4.6f, 0.98f, 30, 120, 140, 0, 4, 86, 92, 18, 42, 16, 160, 16500, -1 }
     }};
     const auto& pr = presets[(size_t) juce::jlimit (0, (int) presets.size() - 1, presetIndex)];
+    setParameterValue (Parameters::IDs::algorithm, static_cast<float> (pr.algorithm));
+
     const std::array<float, 16> values { pr.mix, pr.decay, pr.time, pr.preDelay, pr.size, pr.width,
         pr.warmth, pr.brightness, pr.diffusion, pr.density, pr.modulation, pr.bloom,
         pr.ducking, pr.lowCut, pr.highCut, pr.output };
