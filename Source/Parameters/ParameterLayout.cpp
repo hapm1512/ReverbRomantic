@@ -43,6 +43,25 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     addFloat (IDs::ducking,    "Ducking",    0.0f,    100.0f,   0.1f,   18.0f);
 
     parameters.push_back (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { IDs::shimmerEnable, 1 },
+        "Shimmer Enable",
+        false));
+
+    addFloat (IDs::shimmerMix, "Shimmer Mix",
+              0.0f, 100.0f, 0.1f, 35.0f);
+
+    parameters.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { IDs::shimmerPitch, 1 },
+        "Shimmer Pitch",
+        juce::StringArray { "+7 semitones", "+12 semitones" },
+        1));
+
+    addFloat (IDs::shimmerFeedback, "Shimmer Feedback",
+              0.0f, 70.0f, 0.1f, 30.0f);
+    addFloat (IDs::shimmerTone, "Shimmer Tone",
+              500.0f, 12000.0f, 1.0f, 6000.0f, 0.35f);
+
+    parameters.push_back (std::make_unique<juce::AudioParameterBool> (
         juce::ParameterID { IDs::sidechainEnable, 1 },
         "Sidechain Enable",
         false));
