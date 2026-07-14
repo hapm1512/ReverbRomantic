@@ -90,6 +90,8 @@ public:
     float getInputPeakRight() const noexcept { return inputPeakR.load(); }
     float getOutputPeakLeft() const noexcept { return outputPeakL.load(); }
     float getOutputPeakRight() const noexcept { return outputPeakR.load(); }
+    float getSidechainPeak() const noexcept { return sidechainPeak.load(); }
+    bool isSidechainConnected() const noexcept { return sidechainConnected.load(); }
 
 private:
     static Algorithm sanitiseAlgorithm (float rawValue) noexcept;
@@ -120,6 +122,8 @@ private:
     std::atomic<float> inputPeakR  { 0.0f };
     std::atomic<float> outputPeakL { 0.0f };
     std::atomic<float> outputPeakR { 0.0f };
+    std::atomic<float> sidechainPeak { 0.0f };
+    std::atomic<bool> sidechainConnected { false };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ReverbRomanticAudioProcessor)
 };

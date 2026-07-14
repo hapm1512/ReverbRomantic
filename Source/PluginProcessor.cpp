@@ -13,8 +13,9 @@ constexpr std::array<const char*, 16> presetParameterIds {
 
 ReverbRomanticAudioProcessor::ReverbRomanticAudioProcessor()
     : AudioProcessor (BusesProperties()
-                          .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
-                          .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
+                          .withInput  ("Input",     juce::AudioChannelSet::stereo(), true)
+                          .withInput  ("Sidechain", juce::AudioChannelSet::stereo(), false)
+                          .withOutput ("Output",    juce::AudioChannelSet::stereo(), true)),
       apvts (*this, nullptr, "PARAMETERS", Parameters::createParameterLayout())
 {
     snapshotA = apvts.copyState();
@@ -336,10 +337,27 @@ void ReverbRomanticAudioProcessor::releaseResources()
 
 bool ReverbRomanticAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
-    const auto output = layouts.getMainOutputChannelSet();
-    return (output == juce::AudioChannelSet::mono()
-            || output == juce::AudioChannelSet::stereo())
-           && output == layouts.getMainInputChannelSet();
+    const auto mainInput = layouts.getMainInputChannelSet();
+    const auto mainOutput = layouts.getMainOutputChannelSet();
+
+    if (mainOutput != juce::AudioChannelSet::mono()
+        && mainOutput != juce::AudioChannelSet::stereo())
+        return false;
+
+    if (mainInput != mainOutput)
+        return false;
+
+    if (layouts.inputBuses.size() > 1)
+    {
+        const auto sidechain = layouts.getChannelSet (true, 1);
+
+        if (! sidechain.isDisabled()
+            && sidechain != juce::AudioChannelSet::mono()
+            && sidechain != juce::AudioChannelSet::stereo())
+            return false;
+    }
+
+    return true;
 }
 
 double ReverbRomanticAudioProcessor::getTailLengthSeconds() const
@@ -484,6 +502,39 @@ void ReverbRomanticAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
 
     if (buffer.getNumChannels() == 0 || buffer.getNumSamples() == 0)
         return;
+
+    const bool hasSidechainBus = getBusCount (true) > 1
+                                 && getBus (true, 1) != nullptr
+                                 && getBus (true, 1)->isEnabled();
+
+    if (hasSidechainBus)
+    {
+        const auto sidechainBuffer = getBusBuffer (buffer, true, 1);
+        const int sidechainChannels = sidechainBuffer.getNumChannels();
+
+        if (sidechainChannels > 0)
+        {
+            float peak = sidechainBuffer.getMagnitude (0, 0, sidechainBuffer.getNumSamples());
+
+            if (sidechainChannels > 1)
+                peak = juce::jmax (peak,
+                                   sidechainBuffer.getMagnitude (1, 0,
+                                                                 sidechainBuffer.getNumSamples()));
+
+            sidechainPeak.store (peak);
+            sidechainConnected.store (true);
+        }
+        else
+        {
+            sidechainPeak.store (0.0f);
+            sidechainConnected.store (false);
+        }
+    }
+    else
+    {
+        sidechainPeak.store (0.0f);
+        sidechainConnected.store (false);
+    }
 
     const auto rightChannel = juce::jmin (1, buffer.getNumChannels() - 1);
     inputPeakL.store (buffer.getMagnitude (0, 0, buffer.getNumSamples()));
