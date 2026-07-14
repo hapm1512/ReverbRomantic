@@ -43,6 +43,12 @@ private:
     juce::ToggleButton sidechainEnable { "SIDECHAIN" };
     juce::Label sidechainStatus;
 
+    juce::ToggleButton shimmerEnable { "SHIMMER" };
+    juce::ComboBox shimmerPitchBox;
+    juce::Label shimmerPitchLabel;
+    std::array<juce::Slider, 3> shimmerSliders;
+    std::array<juce::Label, 3> shimmerLabels;
+
     juce::ComboBox userPresetBox;
     juce::TextButton favouriteButton { "FAV" };
     juce::TextButton saveUserButton { "SAVE" }, loadUserButton { "LOAD" };
@@ -62,6 +68,9 @@ private:
     std::array<std::unique_ptr<SA>, 16> sliderAttachments;
     std::array<std::unique_ptr<SA>, 5> sidechainSliderAttachments;
     std::unique_ptr<BA> freezeAttachment, bypassAttachment, sidechainEnableAttachment;
+    std::unique_ptr<BA> shimmerEnableAttachment;
+    std::array<std::unique_ptr<SA>, 3> shimmerSliderAttachments;
+    std::unique_ptr<CA> shimmerPitchAttachment;
     std::unique_ptr<CA> algorithmAttachment, qualityAttachment;
 
     Meter inputMeter { "INPUT" };
@@ -70,6 +79,7 @@ private:
     BottomBar bottomBar;
 
     std::array<juce::Rectangle<int>, 4> panelBounds;
+    juce::Rectangle<int> shimmerPanelBounds;
     juce::Rectangle<int> sidechainPanelBounds;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ReverbRomanticAudioProcessorEditor)

@@ -18,6 +18,18 @@ constexpr std::array<const char*, 16> suffixes {
     " %", " %", " %", " %", " %", " Hz", " Hz", " dB"
 };
 
+constexpr std::array<const char*, 3> shimmerParameterIds {
+    Parameters::IDs::shimmerMix,
+    Parameters::IDs::shimmerFeedback,
+    Parameters::IDs::shimmerTone
+};
+constexpr std::array<const char*, 3> shimmerNames {
+    "MIX", "FEEDBACK", "TONE"
+};
+constexpr std::array<const char*, 3> shimmerSuffixes {
+    " %", " %", " Hz"
+};
+
 constexpr std::array<const char*, 5> sidechainParameterIds {
     Parameters::IDs::sidechainThreshold,
     Parameters::IDs::sidechainAmount,
@@ -38,7 +50,7 @@ ReverbRomanticAudioProcessorEditor::ReverbRomanticAudioProcessorEditor (ReverbRo
 {
     setLookAndFeel (&laf);
     setResizable (true, true);
-    setResizeLimits (900, 650, 1600, 1080);
+    setResizeLimits (900, 760, 1600, 1200);
     setSize (1180, 820);
 
     title.setText ("REVERB ROMANTIC", juce::dontSendNotification);
@@ -208,6 +220,30 @@ ReverbRomanticAudioProcessorEditor::ReverbRomanticAudioProcessorEditor (ReverbRo
         sliderAttachments[i] = std::make_unique<SA> (processor.apvts, parameterIds[i], sliders[i]);
     }
 
+    for (size_t i = 0; i < shimmerSliders.size(); ++i)
+    {
+        setupSidechainSlider (shimmerSliders[i], shimmerLabels[i],
+                              shimmerNames[i], shimmerSuffixes[i]);
+        shimmerSliderAttachments[i] = std::make_unique<SA> (
+            processor.apvts, shimmerParameterIds[i], shimmerSliders[i]);
+    }
+
+    shimmerEnable.setClickingTogglesState (true);
+    shimmerEnableAttachment = std::make_unique<BA> (
+        processor.apvts, Parameters::IDs::shimmerEnable, shimmerEnable);
+    addAndMakeVisible (shimmerEnable);
+
+    shimmerPitchLabel.setText ("PITCH", juce::dontSendNotification);
+    shimmerPitchLabel.setJustificationType (juce::Justification::centred);
+    shimmerPitchLabel.setColour (juce::Label::textColourId, RomanticTheme::text);
+    shimmerPitchLabel.setFont (juce::Font (juce::FontOptions (10.5f, juce::Font::bold)));
+    addAndMakeVisible (shimmerPitchLabel);
+
+    shimmerPitchBox.addItemList ({ "+7 semitones", "+12 semitones" }, 1);
+    shimmerPitchAttachment = std::make_unique<CA> (
+        processor.apvts, Parameters::IDs::shimmerPitch, shimmerPitchBox);
+    addAndMakeVisible (shimmerPitchBox);
+
     for (size_t i = 0; i < sidechainSliders.size(); ++i)
     {
         setupSidechainSlider (sidechainSliders[i], sidechainLabels[i],
@@ -303,6 +339,9 @@ void ReverbRomanticAudioProcessorEditor::paint (juce::Graphics& g)
     };
     for (size_t i = 0; i < panelBounds.size(); ++i)
         drawPanel (g, panelBounds[i], panelNames[i]);
+
+    if (! shimmerPanelBounds.isEmpty())
+        drawPanel (g, shimmerPanelBounds, "SHIMMER REVERB");
 
     if (! sidechainPanelBounds.isEmpty())
         drawPanel (g, sidechainPanelBounds, "SIDECHAIN DUCKING");
@@ -400,6 +439,28 @@ void ReverbRomanticAudioProcessorEditor::resized()
             sidechainLabels[i].setBounds (cell.removeFromTop (18));
             sidechainSliders[i].setBounds (cell.reduced (3, 0));
         }
+    }
+
+    shimmerPanelBounds = area.removeFromBottom (122).reduced (18, 6);
+    {
+        auto inner = shimmerPanelBounds.reduced (10);
+        inner.removeFromTop (30);
+
+        auto enableArea = inner.removeFromLeft (132);
+        shimmerEnable.setBounds (enableArea.removeFromTop (38).reduced (4, 2));
+
+        inner.removeFromLeft (8);
+        const int cellWidth = juce::jmax (1, inner.getWidth() / 4);
+
+        for (size_t i = 0; i < shimmerSliders.size(); ++i)
+        {
+            auto cell = inner.removeFromLeft (cellWidth);
+            shimmerLabels[i].setBounds (cell.removeFromTop (18));
+            shimmerSliders[i].setBounds (cell.reduced (3, 0));
+        }
+
+        shimmerPitchLabel.setBounds (inner.removeFromTop (18));
+        shimmerPitchBox.setBounds (inner.removeFromTop (34).reduced (6, 2));
     }
 
     auto content = area.reduced (18, 10);
