@@ -10,9 +10,16 @@ constexpr float maximumFadeMs = 500.0f;
 constexpr float minimumLoopSeconds = 0.35f;
 constexpr float maximumLoopSeconds = 1.50f;
 constexpr float smoothingSeconds = 0.040f;
+constexpr float holdGainSmoothingSeconds = 0.250f;
 constexpr float energyFloor = 1.0e-7f;
-constexpr float maximumNormaliseGain = 1.35f;
-constexpr float loopDecay = 0.999995f;
+constexpr float maximumCaptureGain = 1.35f;
+constexpr float minimumHoldGain = 0.82f;
+constexpr float maximumHoldGain = 1.18f;
+constexpr float maximumOutput = 1.35f;
+constexpr float dcBlockerPole = 0.995f;
+constexpr float decorrelationAmount = 0.018f;
+constexpr float energyFollowerSeconds = 0.200f;
+constexpr float seamCrossfadeSeconds = 0.045f;
 }
 
 void FreezeProcessor::prepare (const juce::dsp::ProcessSpec& spec)
@@ -25,6 +32,11 @@ void FreezeProcessor::prepare (const juce::dsp::ProcessSpec& spec)
         static_cast<std::size_t> (sampleRate * minimumLoopSeconds),
         requestedLength);
 
+    seamCrossfadeSamples = std::clamp<std::size_t> (
+        static_cast<std::size_t> (std::round (sampleRate * seamCrossfadeSeconds)),
+        1u,
+        std::max<std::size_t> (1u, loopLengthSamples / 4u));
+
     for (auto& channel : history)
         channel.assign (loopLengthSamples, 0.0f);
 
@@ -34,6 +46,7 @@ void FreezeProcessor::prepare (const juce::dsp::ProcessSpec& spec)
     freezeBlend.reset (sampleRate, parameters.fadeTimeMs * 0.001);
     mixSmoother.reset (sampleRate, smoothingSeconds);
     dampingSmoother.reset (sampleRate, smoothingSeconds);
+    holdGainSmoother.reset (sampleRate, holdGainSmoothingSeconds);
 
     reset();
     setParameters (parameters);
@@ -48,13 +61,20 @@ void FreezeProcessor::reset() noexcept
         std::fill (channel.begin(), channel.end(), 0.0f);
 
     dampingState.fill (0.0f);
+    dcInputState.fill (0.0f);
+    dcOutputState.fill (0.0f);
+    decorrelationState.fill (0.0f);
+
     historyWritePosition = 0u;
     loopReadPosition = 0u;
     previousEnabled = false;
+    capturedRms = 0.05f;
+    runningEnergy = capturedRms * capturedRms;
 
     freezeBlend.setCurrentAndTargetValue (0.0f);
     mixSmoother.setCurrentAndTargetValue (parameters.mixPercent * 0.01f);
     dampingSmoother.setCurrentAndTargetValue (parameters.damping);
+    holdGainSmoother.setCurrentAndTargetValue (1.0f);
 }
 
 void FreezeProcessor::setParameters (const Parameters& newParameters) noexcept
@@ -98,17 +118,23 @@ void FreezeProcessor::captureFreezeBuffer() noexcept
 
     const double sampleCount = static_cast<double> (loopLengthSamples * channelCount);
     const float rms = static_cast<float> (std::sqrt (inputEnergy / std::max (1.0, sampleCount)));
-    const float targetRms = std::clamp (rms, 0.03f, 0.22f);
-    const float gain = std::clamp (targetRms / std::max (rms, energyFloor),
+    capturedRms = std::clamp (rms, 0.02f, 0.22f);
+
+    const float gain = std::clamp (capturedRms / std::max (rms, energyFloor),
                                    0.0f,
-                                   maximumNormaliseGain);
+                                   maximumCaptureGain);
 
     for (auto& channel : frozen)
         for (auto& sample : channel)
             sample = softProtect (sample * gain);
 
     loopReadPosition = 0u;
+    runningEnergy = capturedRms * capturedRms;
     dampingState.fill (0.0f);
+    dcInputState.fill (0.0f);
+    dcOutputState.fill (0.0f);
+    decorrelationState.fill (0.0f);
+    holdGainSmoother.setCurrentAndTargetValue (1.0f);
 }
 
 void FreezeProcessor::updateFadeRamp() noexcept
@@ -124,12 +150,35 @@ void FreezeProcessor::updateFadeRamp() noexcept
     }
 }
 
-float FreezeProcessor::readLoopSample (std::size_t channel) const noexcept
+float FreezeProcessor::readLoopSampleAt (std::size_t channel,
+                                         std::size_t position) const noexcept
 {
     if (channel >= channelCount || frozen[channel].empty())
         return 0.0f;
 
-    return frozen[channel][loopReadPosition % frozen[channel].size()];
+    return frozen[channel][position % frozen[channel].size()];
+}
+
+float FreezeProcessor::readLoopSample (std::size_t channel) const noexcept
+{
+    if (loopLengthSamples == 0u)
+        return 0.0f;
+
+    const auto position = loopReadPosition % loopLengthSamples;
+    const auto seamStart = loopLengthSamples - seamCrossfadeSamples;
+
+    if (position < seamStart)
+        return readLoopSampleAt (channel, position);
+
+    const float phase = static_cast<float> (position - seamStart)
+                      / static_cast<float> (std::max<std::size_t> (1u, seamCrossfadeSamples));
+    const float theta = phase * juce::MathConstants<float>::halfPi;
+    const float endGain = std::cos (theta);
+    const float startGain = std::sin (theta);
+    const auto startPosition = position - seamStart;
+
+    return readLoopSampleAt (channel, position) * endGain
+         + readLoopSampleAt (channel, startPosition) * startGain;
 }
 
 float FreezeProcessor::processDamping (float input,
@@ -140,6 +189,15 @@ float FreezeProcessor::processDamping (float input,
     state += coefficient * (input - state);
     state = std::isfinite (state) ? state : 0.0f;
     return state;
+}
+
+float FreezeProcessor::removeDc (float input, std::size_t channel) noexcept
+{
+    const float output = input - dcInputState[channel]
+                       + dcBlockerPole * dcOutputState[channel];
+    dcInputState[channel] = input;
+    dcOutputState[channel] = std::isfinite (output) ? output : 0.0f;
+    return dcOutputState[channel];
 }
 
 float FreezeProcessor::softProtect (float input) noexcept
@@ -173,9 +231,33 @@ void FreezeProcessor::processStereo (float inputL, float inputR,
     float frozenL = processDamping (readLoopSample (0u), 0u, coefficient);
     float frozenR = processDamping (readLoopSample (1u), 1u, coefficient);
 
-    frozenL = softProtect (frozenL * loopDecay);
-    frozenR = softProtect (frozenR * loopDecay);
+    // Very small, opposite-polarity crossfeed refreshes stereo diffusion.
+    const float previousL = decorrelationState[0];
+    const float previousR = decorrelationState[1];
+    decorrelationState[0] = frozenL;
+    decorrelationState[1] = frozenR;
+    frozenL += (previousR - frozenR) * decorrelationAmount;
+    frozenR += (frozenL - previousL) * decorrelationAmount;
 
+    frozenL = removeDc (frozenL, 0u);
+    frozenR = removeDc (frozenR, 1u);
+
+    const float instantaneousEnergy = 0.5f * (frozenL * frozenL + frozenR * frozenR);
+    const float energyCoefficient = 1.0f - std::exp (
+        -1.0f / static_cast<float> (sampleRate * energyFollowerSeconds));
+    runningEnergy += energyCoefficient * (instantaneousEnergy - runningEnergy);
+
+    const float currentRms = std::sqrt (std::max (runningEnergy, energyFloor));
+    const float desiredGain = std::clamp (capturedRms / currentRms,
+                                          minimumHoldGain,
+                                          maximumHoldGain);
+    holdGainSmoother.setTargetValue (desiredGain);
+    const float holdGain = holdGainSmoother.getNextValue();
+
+    frozenL = softProtect (frozenL * holdGain);
+    frozenR = softProtect (frozenR * holdGain);
+
+    // Write the protected result back into the loop for a stable infinite hold.
     frozen[0][loopReadPosition] = frozenL;
     frozen[1][loopReadPosition] = frozenR;
     loopReadPosition = (loopReadPosition + 1u) % loopLengthSamples;
@@ -185,13 +267,22 @@ void FreezeProcessor::processStereo (float inputL, float inputR,
     const float heldL = inputL + (frozenL - inputL) * blend;
     const float heldR = inputR + (frozenR - inputR) * blend;
 
-    outputL = inputL + (heldL - inputL) * mix;
-    outputR = inputR + (heldR - inputR) * mix;
+    outputL = std::clamp (inputL + (heldL - inputL) * mix,
+                          -maximumOutput,
+                          maximumOutput);
+    outputR = std::clamp (inputR + (heldR - inputR) * mix,
+                          -maximumOutput,
+                          maximumOutput);
 
     if (! std::isfinite (outputL) || ! std::isfinite (outputR))
     {
         outputL = std::isfinite (inputL) ? inputL : 0.0f;
         outputR = std::isfinite (inputR) ? inputR : 0.0f;
         dampingState.fill (0.0f);
+        dcInputState.fill (0.0f);
+        dcOutputState.fill (0.0f);
+        decorrelationState.fill (0.0f);
+        runningEnergy = capturedRms * capturedRms;
+        holdGainSmoother.setCurrentAndTargetValue (1.0f);
     }
 }
