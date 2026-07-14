@@ -15,6 +15,16 @@
 class HybridFDN16
 {
 public:
+    enum class RoomModel : int
+    {
+        room = 0,
+        studio,
+        chamber,
+        hall,
+        cathedral,
+        plate
+    };
+
     struct Parameters
     {
         float decaySeconds = 4.2f;
@@ -32,6 +42,7 @@ public:
         float brightnessDb = -1.0f;
         int quality = 1;
         bool freeze = false;
+        RoomModel roomModel = RoomModel::hall;
     };
 
     void prepare (const juce::dsp::ProcessSpec& spec);
@@ -40,6 +51,24 @@ public:
     void processStereo (float inputL, float inputR, float& outputL, float& outputR) noexcept;
 
 private:
+    struct RoomProfile
+    {
+        float delayScale;
+        float decayScale;
+        float preDelayScale;
+        float diffusionBias;
+        float densityBias;
+        float dampingScale;
+        float modulationScale;
+        float bloomBias;
+        float widthScale;
+        float earlyScale;
+        float lateScale;
+        float injectionGain;
+        float tapGain;
+    };
+
+    static RoomProfile getRoomProfile (RoomModel model) noexcept;
     void updateFDNCoefficients() noexcept;
     float processHighPass (float input, float& inputState, float& outputState) noexcept;
     float processLowPass (float input, float& state) noexcept;
@@ -60,7 +89,6 @@ private:
     StereoWidth stereoWidth;
     Limiter limiter;
 
-    // Prime delay lengths referenced to 48 kHz.
     static constexpr std::array<int, 16> primeDelaySamples48k {
         1493, 1801, 1987, 2111,
         2273, 2549, 2843, 2969,
@@ -69,9 +97,14 @@ private:
     };
 
     Parameters parameters;
+    RoomProfile roomProfile { getRoomProfile (RoomModel::hall) };
     double sampleRate = 44100.0;
     float sizeScale = 1.0f;
+    float effectiveDecaySeconds = 4.2f;
     float densityScale = 0.95f;
+    float effectiveDiffusionMix = 0.88f;
+    float injectionGain = 0.105f;
+    float tapGain = 0.115f;
     float lowPassCoefficient = 0.5f;
     float highPassCoefficient = 0.99f;
     float dampingCoefficient = 0.5f;

@@ -2,6 +2,37 @@
 
 #include <cmath>
 
+HybridFDN16::RoomProfile HybridFDN16::getRoomProfile (RoomModel model) noexcept
+{
+    switch (model)
+    {
+        case RoomModel::room:
+            return { 0.72f, 0.72f, 0.55f, -0.12f, -0.10f, 0.78f,
+                     0.65f, -0.18f, 0.82f, 1.18f, 0.78f, 0.112f, 0.108f };
+
+        case RoomModel::studio:
+            return { 0.82f, 0.82f, 0.68f, -0.04f, -0.05f, 0.90f,
+                     0.72f, -0.12f, 0.92f, 1.10f, 0.84f, 0.108f, 0.110f };
+
+        case RoomModel::chamber:
+            return { 0.96f, 0.96f, 0.84f, 0.04f, 0.02f, 0.94f,
+                     0.90f, 0.02f, 1.02f, 1.02f, 0.96f, 0.105f, 0.114f };
+
+        case RoomModel::cathedral:
+            return { 1.34f, 1.30f, 1.28f, 0.10f, 0.08f, 0.72f,
+                     1.12f, 0.14f, 1.12f, 0.76f, 1.18f, 0.096f, 0.120f };
+
+        case RoomModel::plate:
+            return { 0.88f, 1.04f, 0.34f, 0.14f, 0.10f, 1.12f,
+                     1.18f, 0.08f, 1.08f, 0.62f, 1.14f, 0.102f, 0.118f };
+
+        case RoomModel::hall:
+        default:
+            return { 1.12f, 1.12f, 1.00f, 0.07f, 0.05f, 0.84f,
+                     1.00f, 0.08f, 1.08f, 0.88f, 1.08f, 0.100f, 0.117f };
+    }
+}
+
 void HybridFDN16::prepare (const juce::dsp::ProcessSpec& spec)
 {
     sampleRate = juce::jmax (1.0, spec.sampleRate);
@@ -52,7 +83,7 @@ void HybridFDN16::reset()
 void HybridFDN16::updateFDNCoefficients() noexcept
 {
     const float sampleRateScale = static_cast<float> (sampleRate / 48000.0);
-    const float safeDecaySeconds = juce::jmax (0.2f, parameters.decaySeconds);
+    const float safeDecaySeconds = juce::jmax (0.2f, effectiveDecaySeconds);
     constexpr float minusLog1000 = -6.90775527898f;
 
     for (size_t i = 0; i < delays.size(); ++i)
@@ -63,7 +94,6 @@ void HybridFDN16::updateFDNCoefficients() noexcept
         baseDelaySamples[i] = delaySamples;
         delays[i].setDelaySamples (delaySamples);
 
-        // T60: amplitude reaches -60 dB after decaySeconds.
         const float delaySeconds = delaySamples / static_cast<float> (sampleRate);
         feedbackGains[i] = std::exp (minusLog1000 * delaySeconds / safeDecaySeconds);
     }
@@ -74,45 +104,71 @@ void HybridFDN16::setParameters (const Parameters& newParameters) noexcept
     parameters = newParameters;
     parameters.decaySeconds = juce::jlimit (0.2f, 60.0f, parameters.decaySeconds);
     parameters.preDelayMs = juce::jlimit (0.0f, 250.0f, parameters.preDelayMs);
+    parameters.sizePercent = juce::jlimit (25.0f, 200.0f, parameters.sizePercent);
+    parameters.widthPercent = juce::jlimit (0.0f, 200.0f, parameters.widthPercent);
+    parameters.diffusionPercent = juce::jlimit (0.0f, 100.0f, parameters.diffusionPercent);
+    parameters.densityPercent = juce::jlimit (0.0f, 100.0f, parameters.densityPercent);
+    parameters.modulationPercent = juce::jlimit (0.0f, 100.0f, parameters.modulationPercent);
+    parameters.bloomPercent = juce::jlimit (0.0f, 100.0f, parameters.bloomPercent);
+    parameters.duckingPercent = juce::jlimit (0.0f, 100.0f, parameters.duckingPercent);
     parameters.lowCutHz = juce::jlimit (20.0f, 1000.0f, parameters.lowCutHz);
     parameters.highCutHz = juce::jlimit (1000.0f, 20000.0f, parameters.highCutHz);
     parameters.warmthDb = juce::jlimit (-12.0f, 12.0f, parameters.warmthDb);
     parameters.brightnessDb = juce::jlimit (-12.0f, 12.0f, parameters.brightnessDb);
     parameters.quality = juce::jlimit (0, 3, parameters.quality);
 
+    roomProfile = getRoomProfile (parameters.roomModel);
+
     const float sizeNormalised = juce::jlimit (0.0f, 1.0f,
                                                 (parameters.sizePercent - 25.0f) / 175.0f);
-    const float densityNormalised = juce::jlimit (0.0f, 1.0f,
-                                                  parameters.densityPercent * 0.01f);
-    const float diffusionNormalised = juce::jlimit (0.0f, 1.0f,
-                                                     parameters.diffusionPercent * 0.01f);
+    const float densityNormalised = juce::jlimit (
+        0.0f, 1.0f,
+        parameters.densityPercent * 0.01f + roomProfile.densityBias);
+    const float diffusionNormalised = juce::jlimit (
+        0.0f, 1.0f,
+        parameters.diffusionPercent * 0.01f + roomProfile.diffusionBias);
 
-    sizeScale = juce::jlimit (0.25f, 2.0f, parameters.sizePercent * 0.01f);
+    sizeScale = juce::jlimit (0.25f, 2.35f,
+                              parameters.sizePercent * 0.01f * roomProfile.delayScale);
+    effectiveDecaySeconds = juce::jlimit (
+        0.2f, 60.0f, parameters.decaySeconds * roomProfile.decayScale);
     densityScale = juce::jmap (densityNormalised, 0.72f, 1.0f);
+    effectiveDiffusionMix = diffusionNormalised;
+    injectionGain = roomProfile.injectionGain;
+    tapGain = roomProfile.tapGain;
 
+    const float effectivePreDelayMs = juce::jlimit (
+        0.0f, 250.0f, parameters.preDelayMs * roomProfile.preDelayScale);
     for (auto& delay : preDelay)
-        delay.setDelaySamples (parameters.preDelayMs * 0.001f
+        delay.setDelaySamples (effectivePreDelayMs * 0.001f
                                * static_cast<float> (sampleRate));
 
     updateFDNCoefficients();
 
     diffuser.setAmount (diffusionNormalised);
     earlyReflection.setSize (sizeScale);
-    outputDamping.setCutoff (parameters.highCutHz);
-    modulationSource.setAmount (parameters.modulationPercent);
-    tailBloom.setAmount (parameters.bloomPercent);
+
+    const float modelHighCut = juce::jlimit (
+        1000.0f, 20000.0f, parameters.highCutHz * roomProfile.dampingScale);
+    outputDamping.setCutoff (modelHighCut);
+
+    modulationSource.setAmount (juce::jlimit (
+        0.0f, 100.0f, parameters.modulationPercent * roomProfile.modulationScale));
+    tailBloom.setAmount (juce::jlimit (
+        0.0f, 100.0f, parameters.bloomPercent + roomProfile.bloomBias * 100.0f));
     ducking.setAmount (parameters.duckingPercent);
-    stereoWidth.setWidth (parameters.widthPercent);
+    stereoWidth.setWidth (juce::jlimit (
+        0.0f, 200.0f, parameters.widthPercent * roomProfile.widthScale));
 
     const float brightnessRatio = std::pow (2.0f, parameters.brightnessDb / 12.0f);
-    const float effectiveHighCut = juce::jlimit (1000.0f, 20000.0f,
-                                                 parameters.highCutHz * brightnessRatio);
+    const float effectiveHighCut = juce::jlimit (
+        1000.0f, 20000.0f, modelHighCut * brightnessRatio);
 
     lowPassCoefficient = std::exp (-juce::MathConstants<float>::twoPi
                                    * effectiveHighCut
                                    / static_cast<float> (sampleRate));
     dampingCoefficient = std::exp (-juce::MathConstants<float>::twoPi
-                                   * parameters.highCutHz
+                                   * modelHighCut
                                    / static_cast<float> (sampleRate));
     highPassCoefficient = std::exp (-juce::MathConstants<float>::twoPi
                                     * parameters.lowCutHz
@@ -122,22 +178,23 @@ void HybridFDN16::setParameters (const Parameters& newParameters) noexcept
 
     const float qualityScale = std::array<float, 4> { 0.55f, 0.8f, 1.0f, 1.15f }
         [static_cast<size_t> (parameters.quality)];
-    const float maxDepthMs = 0.34f * qualityScale;
+    const float maxDepthMs = 0.34f * qualityScale * roomProfile.modulationScale;
     modulationDepthSamples = maxDepthMs * 0.001f
                              * static_cast<float> (sampleRate);
 
-    // Small spaces favour early reflections; large spaces favour the late field.
-    earlyOutputGain = juce::jmap (sizeNormalised, 0.42f, 0.20f);
-    const float lateSizeGain = juce::jmap (sizeNormalised, 0.84f, 1.10f);
-
+    earlyOutputGain = juce::jmap (sizeNormalised, 0.42f, 0.20f)
+                      * roomProfile.earlyScale;
+    const float lateSizeGain = juce::jmap (sizeNormalised, 0.84f, 1.10f)
+                               * roomProfile.lateScale;
     const float densityNormalisation = juce::jmap (densityNormalised, 1.04f, 0.88f);
     const float diffusionNormalisation = juce::jmap (diffusionNormalised, 1.0f, 0.92f);
     lateOutputGain = densityNormalisation * diffusionNormalisation * lateSizeGain;
 
-    // Precomputed wet-energy compensation avoids gain jumps during parameter moves.
     const float densityEnergy = juce::jmap (densityNormalised, 1.08f, 0.92f);
     const float sizeEnergy = juce::jmap (sizeNormalised, 1.04f, 0.94f);
-    energyCompensation = densityEnergy * sizeEnergy;
+    const float modelEnergy = 1.0f / juce::jmax (
+        0.65f, 0.48f * roomProfile.earlyScale + 0.52f * roomProfile.lateScale);
+    energyCompensation = densityEnergy * sizeEnergy * modelEnergy;
 }
 
 float HybridFDN16::processHighPass (float input,
@@ -179,9 +236,6 @@ void HybridFDN16::processStereo (float inputL,
     float lateR = 0.0f;
     modulationSource.nextValue();
 
-    const float diffusionMix = juce::jlimit (0.0f, 1.0f,
-                                              parameters.diffusionPercent * 0.01f);
-
     for (int i = 0; i < 16; ++i)
     {
         const auto index = static_cast<size_t> (i);
@@ -190,9 +244,7 @@ void HybridFDN16::processStereo (float inputL,
         delays[index].setModulationOffset (modulationSamples);
 
         const float source = (i & 1) != 0 ? diffusedR : diffusedL;
-        const float injection = parameters.freeze ? 0.0f : source * 0.105f;
-
-        // Freeze bypasses all loop attenuation, including density scaling.
+        const float injection = parameters.freeze ? 0.0f : source * injectionGain;
         const float loopGain = parameters.freeze
                                  ? 1.0f
                                  : feedbackGains[index] * densityScale;
@@ -202,17 +254,17 @@ void HybridFDN16::processStereo (float inputL,
 
         if (parameters.freeze)
         {
-            // Preserve the existing field without HF loss during infinite sustain.
             feedback[index] = delayed;
         }
         else
         {
             dampingState[index] = delayed * (1.0f - dampingCoefficient)
                                   + dampingState[index] * dampingCoefficient;
-            feedback[index] = juce::jmap (diffusionMix, delayed, dampingState[index]);
+            feedback[index] = juce::jmap (
+                effectiveDiffusionMix, delayed, dampingState[index]);
         }
 
-        const float tap = feedback[index] * 0.115f;
+        const float tap = feedback[index] * tapGain;
         lateL += ((i % 4) < 2 ? 1.0f : -1.0f) * tap;
         lateR += (((i + 1) % 4) < 2 ? 1.0f : -1.0f) * tap;
     }
@@ -227,7 +279,6 @@ void HybridFDN16::processStereo (float inputL,
     outputL = processLowPass (outputL, lpStateL);
     outputR = processLowPass (outputR, lpStateR);
 
-    // Late enhancement precedes spatial widening and dynamics processing.
     tailBloom.process (outputL, outputR);
     stereoWidth.process (outputL, outputR);
     ducking.process (inputL, inputR, outputL, outputR);
