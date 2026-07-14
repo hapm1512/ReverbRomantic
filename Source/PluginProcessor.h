@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include <array>
 #include "DSP/HybridFDN16.h"
 #include "Parameters/ParameterLayout.h"
 
@@ -15,6 +16,14 @@ public:
         chamber,
         cathedral,
         ambient
+    };
+
+    struct FactoryPreset
+    {
+        const char* name;
+        const char* category;
+        Algorithm algorithm;
+        std::array<float, 16> values;
     };
 
     ReverbRomanticAudioProcessor();
@@ -42,6 +51,13 @@ public:
     void getStateInformation (juce::MemoryBlock&) override;
     void setStateInformation (const void*, int) override;
 
+    int getNumFactoryPresets() const noexcept;
+    juce::String getFactoryPresetName (int index) const;
+    juce::String getFactoryPresetCategory (int index) const;
+    juce::StringArray getFactoryPresetCategories() const;
+    void loadFactoryPreset (int index);
+    int getCurrentFactoryPreset() const noexcept { return currentFactoryPreset.load(); }
+
     juce::AudioProcessorValueTreeState apvts;
 
     float getInputPeakLeft() const noexcept  { return inputPeakL.load(); }
@@ -53,9 +69,12 @@ private:
     static Algorithm sanitiseAlgorithm (float rawValue) noexcept;
     static void applyAlgorithmProfile (Algorithm algorithm,
                                        HybridFDN16::Parameters& parameters) noexcept;
+    static const std::array<FactoryPreset, 48>& getFactoryPresetTable() noexcept;
+    void setParameterPlainValue (const juce::String& id, float plainValue);
 
     HybridFDN16 engine;
 
+    std::atomic<int> currentFactoryPreset { 0 };
     std::atomic<float> inputPeakL  { 0.0f };
     std::atomic<float> inputPeakR  { 0.0f };
     std::atomic<float> outputPeakL { 0.0f };

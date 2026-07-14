@@ -1,5 +1,7 @@
 #pragma once
 #include <JuceHeader.h>
+#include <algorithm>
+#include <vector>
 #include "PluginProcessor.h"
 #include "GUI/RomanticLookAndFeel.h"
 #include "GUI/Meter.h"
@@ -22,17 +24,20 @@ private:
 
     void timerCallback() override;
     void setupSlider (juce::Slider&, juce::Label&, const juce::String&, const juce::String&);
-    void applyPreset (int presetIndex);
-    void setParameterValue (const juce::String& id, float plainValue);
+    void rebuildPresetList();
+    void loadVisiblePreset (int visibleIndex);
+    void selectProcessorPreset();
     void drawPanel (juce::Graphics&, juce::Rectangle<int>, const juce::String&) const;
 
     ReverbRomanticAudioProcessor& processor;
     RomanticLookAndFeel laf;
 
-    juce::Label title, subtitle, presetLabel, algorithmLabel, qualityLabel;
-    juce::ComboBox presetBox, algorithmBox, qualityBox;
-    juce::TextButton previousPreset { "<" }, nextPreset { ">" };
+    juce::Label title, subtitle, categoryLabel, presetLabel, algorithmLabel, qualityLabel;
+    juce::ComboBox categoryBox, presetBox, algorithmBox, qualityBox;
+    juce::TextButton previousPreset { "<" }, nextPreset { ">" }, randomPreset { "RND" };
     juce::ToggleButton freeze { "FREEZE" }, bypass { "BYPASS" };
+
+    std::vector<int> visiblePresetIndexes;
 
     std::array<juce::Slider, 16> sliders;
     std::array<juce::Label, 16> sliderLabels;

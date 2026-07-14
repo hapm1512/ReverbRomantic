@@ -38,38 +38,57 @@ ReverbRomanticAudioProcessorEditor::ReverbRomanticAudioProcessorEditor (ReverbRo
     addAndMakeVisible (title);
     addAndMakeVisible (subtitle);
 
+    categoryLabel.setText ("CATEGORY", juce::dontSendNotification);
     presetLabel.setText ("PRESET", juce::dontSendNotification);
     algorithmLabel.setText ("ALGORITHM", juce::dontSendNotification);
     qualityLabel.setText ("QUALITY", juce::dontSendNotification);
-    for (auto* label : { &presetLabel, &algorithmLabel, &qualityLabel })
+    for (auto* label : { &categoryLabel, &presetLabel, &algorithmLabel, &qualityLabel })
     {
         label->setColour (juce::Label::textColourId, RomanticTheme::dim);
         label->setFont (juce::Font (juce::FontOptions (11.0f, juce::Font::bold)));
         addAndMakeVisible (*label);
     }
 
-    presetBox.addItemList ({ "Romantic Vocal", "Warm Ballad", "Wide Lyrical", "Long Dream", "Bright Hall" }, 1);
-    presetBox.setSelectedId (1, juce::dontSendNotification);
+    categoryBox.addItemList (processor.getFactoryPresetCategories(), 1);
+    categoryBox.setSelectedId (1, juce::dontSendNotification);
     algorithmBox.addItemList ({ "Romantic Hall", "Vocal Plate", "Studio Room",
                                 "Chamber", "Cathedral", "Ambient" }, 1);
     qualityBox.addItemList ({ "Eco", "Standard", "High", "Ultra" }, 1);
+    addAndMakeVisible (categoryBox);
     addAndMakeVisible (presetBox);
     addAndMakeVisible (algorithmBox);
     addAndMakeVisible (qualityBox);
     addAndMakeVisible (previousPreset);
     addAndMakeVisible (nextPreset);
+    addAndMakeVisible (randomPreset);
 
-    presetBox.onChange = [this] { applyPreset (presetBox.getSelectedItemIndex()); };
+    categoryBox.onChange = [this] { rebuildPresetList(); };
+    presetBox.onChange = [this]
+    {
+        if (presetBox.getSelectedItemIndex() >= 0)
+            loadVisiblePreset (presetBox.getSelectedItemIndex());
+    };
     previousPreset.onClick = [this]
     {
         const auto count = presetBox.getNumItems();
-        presetBox.setSelectedItemIndex ((presetBox.getSelectedItemIndex() + count - 1) % count);
+        if (count > 0)
+            presetBox.setSelectedItemIndex ((presetBox.getSelectedItemIndex() + count - 1) % count);
     };
     nextPreset.onClick = [this]
     {
         const auto count = presetBox.getNumItems();
-        presetBox.setSelectedItemIndex ((presetBox.getSelectedItemIndex() + 1) % count);
+        if (count > 0)
+            presetBox.setSelectedItemIndex ((presetBox.getSelectedItemIndex() + 1) % count);
     };
+    randomPreset.onClick = [this]
+    {
+        const auto count = presetBox.getNumItems();
+        if (count > 0)
+            presetBox.setSelectedItemIndex (juce::Random::getSystemRandom().nextInt (count));
+    };
+
+    rebuildPresetList();
+    selectProcessorPreset();
 
     for (size_t i = 0; i < sliders.size(); ++i)
     {
@@ -165,19 +184,24 @@ void ReverbRomanticAudioProcessorEditor::resized()
     auto freezeArea = controls.removeFromRight (100);
     freeze.setBounds (freezeArea.reduced (4, 13));
     controls.removeFromRight (8);
-    auto qualityArea = controls.removeFromRight (118);
+    auto qualityArea = controls.removeFromRight (108);
     qualityLabel.setBounds (qualityArea.removeFromTop (17));
     qualityBox.setBounds (qualityArea.removeFromTop (34));
-    controls.removeFromRight (8);
-    auto algorithmArea = controls.removeFromRight (juce::jmin (176, controls.getWidth() / 2));
+    controls.removeFromRight (7);
+    auto algorithmArea = controls.removeFromRight (juce::jmin (150, controls.getWidth() / 3));
     algorithmLabel.setBounds (algorithmArea.removeFromTop (17));
     algorithmBox.setBounds (algorithmArea.removeFromTop (34));
-    controls.removeFromRight (8);
-    auto presetArea = controls.removeFromRight (juce::jmin (250, controls.getWidth()));
+    controls.removeFromRight (7);
+    auto presetArea = controls.removeFromRight (juce::jmin (235, controls.getWidth() / 2));
     presetLabel.setBounds (presetArea.removeFromTop (17));
-    previousPreset.setBounds (presetArea.removeFromLeft (34).reduced (1));
-    nextPreset.setBounds (presetArea.removeFromRight (34).reduced (1));
-    presetBox.setBounds (presetArea.reduced (4, 0));
+    previousPreset.setBounds (presetArea.removeFromLeft (30).reduced (1));
+    randomPreset.setBounds (presetArea.removeFromRight (42).reduced (1));
+    nextPreset.setBounds (presetArea.removeFromRight (30).reduced (1));
+    presetBox.setBounds (presetArea.reduced (3, 0));
+    controls.removeFromRight (7);
+    auto categoryArea = controls.removeFromRight (juce::jmin (130, controls.getWidth()));
+    categoryLabel.setBounds (categoryArea.removeFromTop (17));
+    categoryBox.setBounds (categoryArea.removeFromTop (34));
 
     auto content = area.reduced (18, 10);
     auto meterStrip = content.removeFromRight (98);
@@ -247,34 +271,44 @@ void ReverbRomanticAudioProcessorEditor::timerCallback()
     fftGraph.setActivity (juce::jmax (processor.getOutputPeakLeft(), processor.getOutputPeakRight()));
 }
 
-void ReverbRomanticAudioProcessorEditor::setParameterValue (const juce::String& id, float plainValue)
+void ReverbRomanticAudioProcessorEditor::rebuildPresetList()
 {
-    if (auto* parameter = processor.apvts.getParameter (id))
-        parameter->setValueNotifyingHost (parameter->convertTo0to1 (plainValue));
+    const auto selectedCategory = categoryBox.getText();
+    const int currentPreset = processor.getCurrentFactoryPreset();
+
+    visiblePresetIndexes.clear();
+    presetBox.clear (juce::dontSendNotification);
+
+    for (int index = 0; index < processor.getNumFactoryPresets(); ++index)
+    {
+        if (selectedCategory == "All"
+            || processor.getFactoryPresetCategory (index) == selectedCategory)
+        {
+            visiblePresetIndexes.push_back (index);
+            presetBox.addItem (processor.getFactoryPresetName (index),
+                               static_cast<int> (visiblePresetIndexes.size()));
+        }
+    }
+
+    auto found = std::find (visiblePresetIndexes.begin(), visiblePresetIndexes.end(), currentPreset);
+    const int selectedIndex = found != visiblePresetIndexes.end()
+                                ? static_cast<int> (std::distance (visiblePresetIndexes.begin(), found))
+                                : 0;
+    if (! visiblePresetIndexes.empty())
+        presetBox.setSelectedItemIndex (selectedIndex, juce::dontSendNotification);
 }
 
-void ReverbRomanticAudioProcessorEditor::applyPreset (int presetIndex)
+void ReverbRomanticAudioProcessorEditor::loadVisiblePreset (int visibleIndex)
 {
-    struct Preset
-    {
-        int algorithm;
-        float mix, decay, time, preDelay, size, width, warmth, brightness;
-        float diffusion, density, modulation, bloom, ducking, lowCut, highCut, output;
-    };
+    if (juce::isPositiveAndBelow (visibleIndex, static_cast<int> (visiblePresetIndexes.size())))
+        processor.loadFactoryPreset (visiblePresetIndexes[static_cast<size_t> (visibleIndex)]);
+}
 
-    static constexpr std::array<Preset, 5> presets {{
-        { 0, 35, 4.2f, 1.00f, 38, 110, 125, 3, -1, 88, 94, 22, 45, 18, 120, 12000, 0 },
-        { 0, 28, 3.4f, 0.92f, 24, 95, 115, 5, -2, 82, 90, 14, 34, 12, 140, 10500, 0 },
-        { 0, 42, 5.8f, 1.08f, 46, 135, 165, 2, 1, 92, 96, 28, 58, 22, 100, 14500, -1 },
-        { 5, 48, 8.6f, 1.24f, 68, 158, 180, 4, -3, 95, 98, 35, 76, 28, 90, 9800, -2 },
-        { 4, 32, 4.6f, 0.98f, 30, 120, 140, 0, 4, 86, 92, 18, 42, 16, 160, 16500, -1 }
-    }};
-    const auto& pr = presets[(size_t) juce::jlimit (0, (int) presets.size() - 1, presetIndex)];
-    setParameterValue (Parameters::IDs::algorithm, static_cast<float> (pr.algorithm));
-
-    const std::array<float, 16> values { pr.mix, pr.decay, pr.time, pr.preDelay, pr.size, pr.width,
-        pr.warmth, pr.brightness, pr.diffusion, pr.density, pr.modulation, pr.bloom,
-        pr.ducking, pr.lowCut, pr.highCut, pr.output };
-    for (size_t i = 0; i < values.size(); ++i)
-        setParameterValue (parameterIds[i], values[i]);
+void ReverbRomanticAudioProcessorEditor::selectProcessorPreset()
+{
+    const int processorIndex = processor.getCurrentFactoryPreset();
+    const auto found = std::find (visiblePresetIndexes.begin(), visiblePresetIndexes.end(), processorIndex);
+    if (found != visiblePresetIndexes.end())
+        presetBox.setSelectedItemIndex (static_cast<int> (std::distance (visiblePresetIndexes.begin(), found)),
+                                        juce::dontSendNotification);
 }
