@@ -15,6 +15,7 @@
 - Correct Density so it no longer shortens RT60.
 - Raise wet injection and late-tail output gain.
 - Open the Hall and Cathedral high-frequency damping.
+- Install the rebuilt VST3 automatically after Release builds.
 - Keep all DSP memory allocation inside `prepareToPlay()`.
 
 ## Validation matrix
