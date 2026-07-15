@@ -294,7 +294,6 @@ ReverbRomanticAudioProcessorEditor::ReverbRomanticAudioProcessorEditor (ReverbRo
 
     addAndMakeVisible (inputMeter);
     addAndMakeVisible (outputMeter);
-    addAndMakeVisible (fftGraph);
     addAndMakeVisible (bottomBar);
 
     startTimerHz (20);
@@ -561,16 +560,12 @@ void ReverbRomanticAudioProcessorEditor::resized()
         }
     }
 
-    auto centre = getLocalBounds().reduced (170, 135);
-    fftGraph.setBounds (centre);
-    fftGraph.toBack();
 }
 
 void ReverbRomanticAudioProcessorEditor::timerCallback()
 {
     inputMeter.setLevels (processor.getInputPeakLeft(), processor.getInputPeakRight());
     outputMeter.setLevels (processor.getOutputPeakLeft(), processor.getOutputPeakRight());
-    fftGraph.setActivity (juce::jmax (processor.getOutputPeakLeft(), processor.getOutputPeakRight()));
     undoButton.setEnabled (processor.canUndoPresetChange());
     redoButton.setEnabled (processor.canRedoPresetChange());
     snapshotAButton.setToggleState (! processor.isSnapshotBActive(), juce::dontSendNotification);
