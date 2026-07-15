@@ -11,6 +11,7 @@
 - Guard the final output against non-finite samples.
 - Retain `juce::ScopedNoDenormals` in the audio callback.
 - Reduce the GUI status timer from 30 Hz to 20 Hz.
+- Remove the decorative background waveform.
 - Keep all DSP memory allocation inside `prepareToPlay()`.
 
 ## Validation matrix
