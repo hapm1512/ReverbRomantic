@@ -91,6 +91,7 @@ private:
     };
 
     static RoomProfile getRoomProfile (RoomModel model) noexcept;
+    static bool parametersEqual (const Parameters&, const Parameters&) noexcept;
     void updateFDNCoefficients() noexcept;
     float processHighPass (float input, float& inputState, float& outputState) noexcept;
     float processLowPass (float input, float& state) noexcept;
@@ -120,6 +121,7 @@ private:
     };
 
     Parameters parameters;
+    bool parametersInitialised = false;
     RoomProfile roomProfile { getRoomProfile (RoomModel::hall) };
     double sampleRate = 44100.0;
     float sizeScale = 1.0f;
