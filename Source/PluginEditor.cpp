@@ -93,9 +93,10 @@ ReverbRomanticAudioProcessorEditor::ReverbRomanticAudioProcessorEditor (ReverbRo
 
     categoryLabel.setText ("CATEGORY", juce::dontSendNotification);
     presetLabel.setText ("PRESET", juce::dontSendNotification);
+    engineLabel.setText ("ENGINE", juce::dontSendNotification);
     algorithmLabel.setText ("ALGORITHM", juce::dontSendNotification);
     qualityLabel.setText ("QUALITY", juce::dontSendNotification);
-    for (auto* label : { &categoryLabel, &presetLabel, &algorithmLabel, &qualityLabel })
+    for (auto* label : { &categoryLabel, &presetLabel, &engineLabel, &algorithmLabel, &qualityLabel })
     {
         label->setColour (juce::Label::textColourId, RomanticTheme::dim);
         label->setFont (juce::Font (juce::FontOptions (11.0f, juce::Font::bold)));
@@ -106,9 +107,11 @@ ReverbRomanticAudioProcessorEditor::ReverbRomanticAudioProcessorEditor (ReverbRo
     categoryBox.setSelectedId (1, juce::dontSendNotification);
     algorithmBox.addItemList ({ "Romantic Hall", "Vocal Plate", "Studio Room",
                                 "Chamber", "Cathedral", "Ambient" }, 1);
+    engineBox.addItemList ({ "JUCE Core", "FDN16 Core" }, 1);
     qualityBox.addItemList ({ "Eco", "Standard", "High", "Ultra" }, 1);
     addAndMakeVisible (categoryBox);
     addAndMakeVisible (presetBox);
+    addAndMakeVisible (engineBox);
     addAndMakeVisible (algorithmBox);
     addAndMakeVisible (qualityBox);
     addAndMakeVisible (previousPreset);
@@ -318,6 +321,7 @@ ReverbRomanticAudioProcessorEditor::ReverbRomanticAudioProcessorEditor (ReverbRo
     freezeAttachment = std::make_unique<BA> (processor.apvts, Parameters::IDs::freeze, freeze);
     bypassAttachment = std::make_unique<BA> (processor.apvts, Parameters::IDs::bypass, bypass);
     algorithmAttachment = std::make_unique<CA> (processor.apvts, Parameters::IDs::algorithm, algorithmBox);
+    engineAttachment = std::make_unique<CA> (processor.apvts, Parameters::IDs::engine, engineBox);
     qualityAttachment = std::make_unique<CA> (processor.apvts, Parameters::IDs::quality, qualityBox);
 
     addAndMakeVisible (inputMeter);
@@ -443,30 +447,34 @@ void ReverbRomanticAudioProcessorEditor::resized()
     userPresetBox.setBounds (tools.reduced (2, 0));
 
     auto header = area.removeFromTop (88).reduced (22, 10);
-    auto brand = header.removeFromLeft (juce::jmin (350, header.getWidth() / 3));
+    auto brand = header.removeFromLeft (juce::jmin (260, header.getWidth() / 4));
     title.setBounds (brand.removeFromTop (42));
     subtitle.setBounds (brand.removeFromTop (20));
 
     auto controls = header.reduced (4, 2);
-    auto bypassArea = controls.removeFromRight (100);
+    auto bypassArea = controls.removeFromRight (80);
     bypass.setBounds (bypassArea.reduced (4, 13));
     controls.removeFromRight (8);
-    auto qualityArea = controls.removeFromRight (108);
+    auto qualityArea = controls.removeFromRight (92);
     qualityLabel.setBounds (qualityArea.removeFromTop (17));
     qualityBox.setBounds (qualityArea.removeFromTop (34));
     controls.removeFromRight (7);
-    auto algorithmArea = controls.removeFromRight (juce::jmin (150, controls.getWidth() / 3));
+    auto algorithmArea = controls.removeFromRight (juce::jmin (135, controls.getWidth() / 3));
     algorithmLabel.setBounds (algorithmArea.removeFromTop (17));
     algorithmBox.setBounds (algorithmArea.removeFromTop (34));
     controls.removeFromRight (7);
-    auto presetArea = controls.removeFromRight (juce::jmin (235, controls.getWidth() / 2));
+    auto engineArea = controls.removeFromRight (juce::jmin (112, controls.getWidth() / 3));
+    engineLabel.setBounds (engineArea.removeFromTop (17));
+    engineBox.setBounds (engineArea.removeFromTop (34));
+    controls.removeFromRight (7);
+    auto presetArea = controls.removeFromRight (juce::jmin (195, controls.getWidth() / 2));
     presetLabel.setBounds (presetArea.removeFromTop (17));
     previousPreset.setBounds (presetArea.removeFromLeft (30).reduced (1));
     randomPreset.setBounds (presetArea.removeFromRight (42).reduced (1));
     nextPreset.setBounds (presetArea.removeFromRight (30).reduced (1));
     presetBox.setBounds (presetArea.reduced (3, 0));
     controls.removeFromRight (7);
-    auto categoryArea = controls.removeFromRight (juce::jmin (130, controls.getWidth()));
+    auto categoryArea = controls.removeFromRight (juce::jmin (105, controls.getWidth()));
     categoryLabel.setBounds (categoryArea.removeFromTop (17));
     categoryBox.setBounds (categoryArea.removeFromTop (34));
 
