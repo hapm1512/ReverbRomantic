@@ -163,10 +163,12 @@ void HybridFDN16::setParameters (const Parameters& newParameters) noexcept
 
     diffuser.setAmount (diffusionNormalised);
     earlyReflection.setSize (sizeScale);
+    earlyReflection.setShape (static_cast<EarlyReflection::Shape> (parameters.roomModel));
 
     const float modelHighCut = juce::jlimit (
         1000.0f, 20000.0f, parameters.highCutHz * roomProfile.dampingScale);
     outputDamping.setCutoff (modelHighCut);
+    earlyReflection.setHighCut (modelHighCut);
 
     modulationSource.setAmount (juce::jlimit (
         0.0f, 100.0f, parameters.modulationPercent * roomProfile.modulationScale));
