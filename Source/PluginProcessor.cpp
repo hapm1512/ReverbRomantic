@@ -331,6 +331,9 @@ void ReverbRomanticAudioProcessor::prepareToPlay (double sampleRate,
                                         static_cast<juce::uint32> (samplesPerBlock),
                                         2 };
     engine.prepare (spec);
+    juceReverb.prepare (spec);
+    juceReverb.reset();
+    juceWetBuffer.setSize (2, 16384, false, true, false);
     freezeProcessor.prepare (spec);
     shimmer.prepare (spec);
     postDucking.prepare (spec);
@@ -349,6 +352,7 @@ void ReverbRomanticAudioProcessor::prepareToPlay (double sampleRate,
 void ReverbRomanticAudioProcessor::releaseResources()
 {
     engine.reset();
+    juceReverb.reset();
     freezeProcessor.reset();
     shimmer.reset();
     postDucking.reset();
@@ -661,6 +665,44 @@ void ReverbRomanticAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
 
     const bool isMono = buffer.getNumChannels() == 1;
 
+    const bool useJuceCore =
+        apvts.getRawParameterValue (Parameters::IDs::engine)->load() < 0.5f;
+
+    const float* juceWetLeft = nullptr;
+    const float* juceWetRight = nullptr;
+
+    if (useJuceCore)
+    {
+        const int numSamples = buffer.getNumSamples();
+        jassert (numSamples <= juceWetBuffer.getNumSamples());
+
+        auto* wetLeft = juceWetBuffer.getWritePointer (0);
+        auto* wetRight = juceWetBuffer.getWritePointer (1);
+        juce::FloatVectorOperations::copy (wetLeft, left, numSamples);
+        juce::FloatVectorOperations::copy (wetRight, isMono ? left : right, numSamples);
+
+        juce::dsp::Reverb::Parameters p;
+        p.roomSize = juce::jlimit (0.0f, 0.995f,
+            1.0f - std::exp (-dspParameters.decaySeconds / 2.8f));
+        p.damping = juce::jlimit (0.0f, 1.0f,
+            1.0f - dspParameters.highCutHz / 20000.0f
+            + dspParameters.warmthDb * 0.012f);
+        p.width = juce::jlimit (0.0f, 1.0f,
+            dspParameters.widthPercent / 130.0f);
+        p.wetLevel = 1.0f;
+        p.dryLevel = 0.0f;
+        p.freezeMode = dspParameters.freeze ? 1.0f : 0.0f;
+        juceReverb.setParameters (p);
+
+        juce::dsp::AudioBlock<float> wetBlock (juceWetBuffer);
+        auto activeBlock = wetBlock.getSubBlock (0, static_cast<size_t> (numSamples));
+        juce::dsp::ProcessContextReplacing<float> wetContext (activeBlock);
+        juceReverb.process (wetContext);
+
+        juceWetLeft = wetLeft;
+        juceWetRight = wetRight;
+    }
+
     
     const bool useExternalSidechain =
         dspParameters.sidechainEnabled
@@ -693,7 +735,12 @@ void ReverbRomanticAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
         const float dryR = isMono ? dryL : right[sample];
         float wetL = 0.0f;
         float wetR = 0.0f;
-        if (sidechainLeft != nullptr)
+        if (useJuceCore)
+        {
+            wetL = juceWetLeft[sample];
+            wetR = juceWetRight[sample];
+        }
+        else if (sidechainLeft != nullptr)
         {
             engine.processStereo (dryL, dryR,
                                   sidechainLeft[sample],
