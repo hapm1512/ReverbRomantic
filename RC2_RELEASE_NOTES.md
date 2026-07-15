@@ -3,6 +3,8 @@
 ## Completed
 
 - Avoid repeated FDN coefficient rebuilds for unchanged parameters.
+- Skip pitch-shifting DSP while Shimmer is fully bypassed.
+- Skip frozen-loop DSP while Freeze is fully bypassed.
 - Preserve all existing DSP algorithms and factory presets.
 - Smooth Mix automation over 25 milliseconds.
 - Smooth Output automation over 25 milliseconds.
