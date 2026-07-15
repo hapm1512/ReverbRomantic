@@ -28,6 +28,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
         algorithmNames,
         0));
 
+    parameters.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { IDs::engine, 1 },
+        "Engine",
+        engineNames,
+        0));
+
     addFloat (IDs::mix,        "Mix",        0.0f,    100.0f,   0.1f,   35.0f);
     addFloat (IDs::decay,      "Decay",      0.2f,     20.0f,  0.01f,    4.2f, 0.45f);
     addFloat (IDs::time,       "Time",       0.25f,     2.0f, 0.001f,    1.0f);
