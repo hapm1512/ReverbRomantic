@@ -66,6 +66,8 @@ void HybridFDN16::reset()
 
     feedback.fill (0.0f);
     dampingState.fill (0.0f);
+    bassState.fill (0.0f);
+    presenceState.fill (0.0f);
     diffuser.reset();
     earlyReflection.reset();
     outputDamping.reset();
@@ -168,6 +170,16 @@ void HybridFDN16::setParameters (const Parameters& newParameters) noexcept
     const float modelHighCut = juce::jlimit (
         1000.0f, 20000.0f, parameters.highCutHz * roomProfile.dampingScale);
     outputDamping.setCutoff (modelHighCut);
+
+    // Epic 6D: material and air absorption remain tied to existing tone controls.
+    const float dampingAmount = juce::jlimit (0.0f, 1.0f,
+        0.28f + (1.0f - roomProfile.dampingScale) * 0.55f
+        - parameters.brightnessDb * 0.018f);
+    const float airLossAmount = juce::jlimit (0.0f, 1.0f,
+        0.18f + sizeNormalised * 0.30f
+        - parameters.brightnessDb * 0.014f);
+    outputDamping.setDampingAmount (dampingAmount);
+    outputDamping.setAirLoss (airLossAmount);
     earlyReflection.setHighCut (modelHighCut);
 
     modulationSource.setAmount (juce::jlimit (
@@ -188,6 +200,29 @@ void HybridFDN16::setParameters (const Parameters& newParameters) noexcept
     dampingCoefficient = std::exp (-juce::MathConstants<float>::twoPi
                                    * modelHighCut
                                    / static_cast<float> (sampleRate));
+
+    // Three-band decay shaping inside the feedback loop.
+    const float bassSplitHz = juce::jmap (sizeNormalised, 310.0f, 190.0f);
+    const float presenceSplitHz = juce::jmap (sizeNormalised, 5200.0f, 3600.0f);
+    bassSplitCoefficient = std::exp (-juce::MathConstants<float>::twoPi
+                                     * bassSplitHz / static_cast<float> (sampleRate));
+    presenceSplitCoefficient = std::exp (-juce::MathConstants<float>::twoPi
+                                         * presenceSplitHz / static_cast<float> (sampleRate));
+
+    const float warmthNormalised = juce::jlimit (-1.0f, 1.0f, parameters.warmthDb / 12.0f);
+    const float brightnessNormalised = juce::jlimit (-1.0f, 1.0f, parameters.brightnessDb / 12.0f);
+    lowDecayMultiplier = juce::jlimit (0.955f, 0.9995f,
+        0.982f + 0.014f * warmthNormalised + 0.006f * sizeNormalised);
+    midDecayMultiplier = juce::jlimit (0.955f, 0.997f,
+        0.986f + 0.004f * roomProfile.decayScale);
+    highDecayMultiplier = juce::jlimit (0.82f, 0.992f,
+        0.925f + 0.040f * brightnessNormalised
+        + 0.020f * roomProfile.dampingScale);
+
+    // Prevent low-frequency bloom from becoming a resonant rumble.
+    bassResonanceControl = juce::jlimit (0.90f, 1.0f,
+        0.965f - 0.020f * warmthNormalised + 0.018f * densityNormalised);
+
     highPassCoefficient = std::exp (-juce::MathConstants<float>::twoPi
                                     * parameters.lowCutHz
                                     / static_cast<float> (sampleRate));
@@ -360,10 +395,25 @@ void HybridFDN16::processStereo (float inputL,
         }
         else
         {
-            dampingState[index] = delayed * (1.0f - dampingCoefficient)
+            // Frequency-dependent RT60: bass, body and air decay independently.
+            bassState[index] = delayed * (1.0f - bassSplitCoefficient)
+                               + bassState[index] * bassSplitCoefficient;
+            presenceState[index] = delayed * (1.0f - presenceSplitCoefficient)
+                                   + presenceState[index] * presenceSplitCoefficient;
+
+            const float lowBand = bassState[index];
+            const float highBand = delayed - presenceState[index];
+            const float midBand = presenceState[index] - lowBand;
+            const float spectrallyDecayed =
+                lowBand * lowDecayMultiplier * bassResonanceControl
+                + midBand * midDecayMultiplier
+                + highBand * highDecayMultiplier;
+
+            dampingState[index] = spectrallyDecayed * (1.0f - dampingCoefficient)
                                   + dampingState[index] * dampingCoefficient;
-            feedback[index] = juce::jmap (
-                effectiveDiffusionMix, delayed, dampingState[index]);
+            feedback[index] = juce::jmap (effectiveDiffusionMix,
+                                           spectrallyDecayed,
+                                           dampingState[index]);
         }
 
         const float tap = feedback[index] * tapGain;

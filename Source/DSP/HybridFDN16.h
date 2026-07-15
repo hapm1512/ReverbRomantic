@@ -101,6 +101,8 @@ private:
     std::array<RomanticDelayLine, 2> preDelay;
     alignas (64) Matrix16::Vector feedback {};
     alignas (64) Matrix16::Vector dampingState {};
+    alignas (64) Matrix16::Vector bassState {};
+    alignas (64) Matrix16::Vector presenceState {};
     alignas (64) Matrix16::Vector baseDelaySamples {};
     alignas (64) Matrix16::Vector feedbackGains {};
 
@@ -132,6 +134,12 @@ private:
     float lowPassCoefficient = 0.5f;
     float highPassCoefficient = 0.99f;
     float dampingCoefficient = 0.5f;
+    float bassSplitCoefficient = 0.97f;
+    float presenceSplitCoefficient = 0.55f;
+    float lowDecayMultiplier = 1.0f;
+    float midDecayMultiplier = 0.985f;
+    float highDecayMultiplier = 0.94f;
+    float bassResonanceControl = 1.0f;
     float toneGain = 1.0f;
     float modulationDepthSamples = 0.0f;
     float earlyOutputGain = 0.32f;
