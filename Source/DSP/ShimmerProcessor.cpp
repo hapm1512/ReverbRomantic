@@ -131,6 +131,19 @@ void ShimmerProcessor::processStereo (float inputL, float inputR,
 {
     juce::ScopedNoDenormals noDenormals;
 
+    // Pitch shifting is the most expensive optional stage. Once the bypass
+    // ramp reaches silence, avoid running it until shimmer is enabled again.
+    if (! parameters.enabled
+        && ! bypassSmoother.isSmoothing()
+        && bypassSmoother.getCurrentValue() <= 0.000001f)
+    {
+        outputL = inputL;
+        outputR = inputR;
+        feedbackL = 0.0f;
+        feedbackR = 0.0f;
+        return;
+    }
+
     updateToneCoefficient (toneSmoother.getNextValue());
 
     const float active = bypassSmoother.getNextValue();
