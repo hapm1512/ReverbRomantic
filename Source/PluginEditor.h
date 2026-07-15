@@ -35,8 +35,8 @@ private:
     ReverbRomanticAudioProcessor& processor;
     RomanticLookAndFeel laf;
 
-    juce::Label title, subtitle, categoryLabel, presetLabel, algorithmLabel, qualityLabel;
-    juce::ComboBox categoryBox, presetBox, algorithmBox, qualityBox;
+    juce::Label title, subtitle, categoryLabel, presetLabel, engineLabel, algorithmLabel, qualityLabel;
+    juce::ComboBox categoryBox, presetBox, engineBox, algorithmBox, qualityBox;
     juce::TextButton previousPreset { "<" }, nextPreset { ">" }, randomPreset { "RND" };
     juce::ToggleButton freeze { "FREEZE" }, bypass { "BYPASS" };
     std::array<juce::Slider, 3> freezeSliders;
@@ -78,7 +78,7 @@ private:
     std::unique_ptr<BA> shimmerEnableAttachment;
     std::array<std::unique_ptr<SA>, 3> shimmerSliderAttachments;
     std::unique_ptr<CA> shimmerPitchAttachment;
-    std::unique_ptr<CA> algorithmAttachment, qualityAttachment;
+    std::unique_ptr<CA> engineAttachment, algorithmAttachment, qualityAttachment;
 
     Meter inputMeter { "INPUT" };
     Meter outputMeter { "OUTPUT" };
