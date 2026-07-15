@@ -28,12 +28,13 @@ private:
 
     void updateCoefficients() noexcept;
 
-    std::array<FirstOrderAllPass, 2> sideAllPass;
+    std::array<FirstOrderAllPass, 3> sideAllPass;
 
     double sampleRate = 44100.0;
     float targetWidth = 1.0f;
     float smoothedWidth = 1.0f;
     float smoothingCoefficient = 0.0f;
-    float allPassCoefficientA = 0.0f;
-    float allPassCoefficientB = 0.0f;
+    std::array<float, 3> allPassCoefficients {};
+    float sideEnvelope = 0.0f;
+    float correlationState = 0.0f;
 };

@@ -6,9 +6,8 @@ void StereoWidth::prepare (const juce::dsp::ProcessSpec& spec) noexcept
 {
     sampleRate = juce::jmax (1.0, spec.sampleRate);
 
-    // Approximately 20 ms smoothing avoids clicks during automation.
     smoothingCoefficient = std::exp (-1.0f /
-                                     (0.020f * static_cast<float> (sampleRate)));
+                                     (0.025f * static_cast<float> (sampleRate)));
 
     updateCoefficients();
     reset();
@@ -20,6 +19,8 @@ void StereoWidth::reset() noexcept
         stage.reset();
 
     smoothedWidth = targetWidth;
+    sideEnvelope = 0.0f;
+    correlationState = 0.0f;
 }
 
 void StereoWidth::setWidth (float percent) noexcept
@@ -29,18 +30,18 @@ void StereoWidth::setWidth (float percent) noexcept
 
 void StereoWidth::updateCoefficients() noexcept
 {
-    // Two gentle phase rotations on the Side channel.
-    // Frequencies remain low enough to avoid audible coloration.
     const auto makeCoefficient = [this] (float frequency) noexcept
     {
         const float tangent = std::tan (juce::MathConstants<float>::pi
                                         * frequency
                                         / static_cast<float> (sampleRate));
-        return juce::jlimit (-0.98f, 0.98f, (1.0f - tangent) / (1.0f + tangent));
+        return juce::jlimit (-0.985f, 0.985f,
+                            (1.0f - tangent) / (1.0f + tangent));
     };
 
-    allPassCoefficientA = makeCoefficient (173.0f);
-    allPassCoefficientB = makeCoefficient (613.0f);
+    allPassCoefficients[0] = makeCoefficient (137.0f);
+    allPassCoefficients[1] = makeCoefficient (487.0f);
+    allPassCoefficients[2] = makeCoefficient (1481.0f);
 }
 
 void StereoWidth::process (float& left, float& right) noexcept
@@ -51,18 +52,30 @@ void StereoWidth::process (float& left, float& right) noexcept
     const float mid = 0.5f * (left + right);
     const float drySide = 0.5f * (left - right);
 
-    float decorrelatedSide = sideAllPass[0].process (drySide, allPassCoefficientA);
-    decorrelatedSide = sideAllPass[1].process (decorrelatedSide, allPassCoefficientB);
+    float decorrelatedSide = drySide;
+    for (std::size_t i = 0; i < sideAllPass.size(); ++i)
+        decorrelatedSide = sideAllPass[i].process (decorrelatedSide,
+                                                   allPassCoefficients[i]);
 
-    // Keep narrowing fully phase-safe. Add decorrelation only above 100% width.
-    const float decorrelationMix = juce::jlimit (0.0f, 1.0f,
-                                                  (smoothedWidth - 1.0f) * 0.70f);
-    const float sideSignal = juce::jmap (decorrelationMix,
-                                         drySide,
-                                         decorrelatedSide)
-                             * smoothedWidth;
+    sideEnvelope += (std::abs (drySide) - sideEnvelope) * 0.0025f;
+    correlationState += ((left * right) - correlationState) * 0.0015f;
 
-    // Equal-power compensation keeps perceived loudness stable.
+    const float expansion = juce::jmax (0.0f, smoothedWidth - 1.0f);
+    float decorrelationMix = juce::jlimit (0.0f, 0.62f, expansion * 0.48f);
+
+    // Reduce widening when channels trend strongly anti-correlated.
+    if (correlationState < 0.0f)
+        decorrelationMix *= 1.0f / (1.0f + std::abs (correlationState) * 8.0f);
+
+    const float decorrelated = juce::jmap (decorrelationMix,
+                                           drySide,
+                                           decorrelatedSide);
+
+    // Soft side limiting prevents excessive width on sparse transients.
+    const float sideLimit = juce::jmax (0.02f, sideEnvelope * 3.2f);
+    const float limitedSide = sideLimit * std::tanh (decorrelated / sideLimit);
+    const float sideSignal = limitedSide * smoothedWidth;
+
     const float energy = 0.5f * (1.0f + smoothedWidth * smoothedWidth);
     const float normalise = 1.0f / std::sqrt (juce::jmax (1.0f, energy));
 
