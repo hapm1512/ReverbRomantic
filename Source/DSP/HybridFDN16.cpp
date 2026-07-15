@@ -52,8 +52,36 @@ void HybridFDN16::prepare (const juce::dsp::ProcessSpec& spec)
     stereoWidth.prepare (spec);
     limiter.prepare (spec);
 
+    parametersInitialised = false;
     setParameters (parameters);
     reset();
+}
+
+bool HybridFDN16::parametersEqual (const Parameters& a,
+                                   const Parameters& b) noexcept
+{
+    return a.decaySeconds == b.decaySeconds
+        && a.preDelayMs == b.preDelayMs
+        && a.sizePercent == b.sizePercent
+        && a.widthPercent == b.widthPercent
+        && a.diffusionPercent == b.diffusionPercent
+        && a.densityPercent == b.densityPercent
+        && a.modulationPercent == b.modulationPercent
+        && a.bloomPercent == b.bloomPercent
+        && a.duckingPercent == b.duckingPercent
+        && a.sidechainEnabled == b.sidechainEnabled
+        && a.sidechainThresholdDb == b.sidechainThresholdDb
+        && a.sidechainAmountPercent == b.sidechainAmountPercent
+        && a.sidechainAttackMs == b.sidechainAttackMs
+        && a.sidechainReleaseMs == b.sidechainReleaseMs
+        && a.sidechainHighPassHz == b.sidechainHighPassHz
+        && a.lowCutHz == b.lowCutHz
+        && a.highCutHz == b.highCutHz
+        && a.warmthDb == b.warmthDb
+        && a.brightnessDb == b.brightnessDb
+        && a.quality == b.quality
+        && a.freeze == b.freeze
+        && a.roomModel == b.roomModel;
 }
 
 void HybridFDN16::reset()
@@ -107,7 +135,11 @@ void HybridFDN16::updateFDNCoefficients() noexcept
 
 void HybridFDN16::setParameters (const Parameters& newParameters) noexcept
 {
+    if (parametersInitialised && parametersEqual (parameters, newParameters))
+        return;
+
     parameters = newParameters;
+    parametersInitialised = true;
     parameters.decaySeconds = juce::jlimit (0.2f, 60.0f, parameters.decaySeconds);
     parameters.preDelayMs = juce::jlimit (0.0f, 250.0f, parameters.preDelayMs);
     parameters.sizePercent = juce::jlimit (25.0f, 200.0f, parameters.sizePercent);
