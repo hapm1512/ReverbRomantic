@@ -373,23 +373,41 @@ void HybridFDN16::processStereo (float inputL,
     float lateR = 0.0f;
     modulationSource.nextValue();
 
-    for (int i = 0; i < 16; ++i)
+    const bool freezeActive = parameters.freeze;
+    const float localInjectionGain = freezeActive ? 0.0f : injectionGain;
+    const float localDensityScale = densityScale;
+    const float localTapGain = tapGain;
+    constexpr std::array<float, 16> tapSignsL
     {
-        const auto index = static_cast<size_t> (i);
-        const float modulationSamples = modulationSource.getOffset (i)
-                                        * modulationDepthSamples;
-        delays[index].setModulationOffset (modulationSamples);
+         1.0f,  1.0f, -1.0f, -1.0f,
+         1.0f,  1.0f, -1.0f, -1.0f,
+         1.0f,  1.0f, -1.0f, -1.0f,
+         1.0f,  1.0f, -1.0f, -1.0f
+    };
+    constexpr std::array<float, 16> tapSignsR
+    {
+         1.0f, -1.0f, -1.0f,  1.0f,
+         1.0f, -1.0f, -1.0f,  1.0f,
+         1.0f, -1.0f, -1.0f,  1.0f,
+         1.0f, -1.0f, -1.0f,  1.0f
+    };
 
-        const float source = (i & 1) != 0 ? diffusedR : diffusedL;
-        const float injection = parameters.freeze ? 0.0f : source * injectionGain;
-        const float loopGain = parameters.freeze
+    for (std::size_t index = 0; index < delays.size(); ++index)
+    {
+        const int line = static_cast<int> (index);
+        delays[index].setModulationOffset (
+            modulationSource.getOffset (line) * modulationDepthSamples);
+
+        const float source = (index & 1u) != 0u ? diffusedR : diffusedL;
+        const float injection = source * localInjectionGain;
+        const float loopGain = freezeActive
                                  ? 0.99995f
-                                 : feedbackGains[index] * densityScale;
+                                 : feedbackGains[index] * localDensityScale;
 
         const float delayed = delays[index].process (
             injection + mixedFeedback[index] * loopGain);
 
-        if (parameters.freeze)
+        if (freezeActive)
         {
             feedback[index] = delayed;
         }
@@ -411,14 +429,14 @@ void HybridFDN16::processStereo (float inputL,
 
             dampingState[index] = spectrallyDecayed * (1.0f - dampingCoefficient)
                                   + dampingState[index] * dampingCoefficient;
-            feedback[index] = juce::jmap (effectiveDiffusionMix,
-                                           spectrallyDecayed,
-                                           dampingState[index]);
+            feedback[index] = spectrallyDecayed
+                              + effectiveDiffusionMix
+                                    * (dampingState[index] - spectrallyDecayed);
         }
 
-        const float tap = feedback[index] * tapGain;
-        lateL += ((i % 4) < 2 ? 1.0f : -1.0f) * tap;
-        lateR += (((i + 1) % 4) < 2 ? 1.0f : -1.0f) * tap;
+        const float tap = feedback[index] * localTapGain;
+        lateL += tapSignsL[index] * tap;
+        lateR += tapSignsR[index] * tap;
     }
 
     outputL = (earlyL * earlyOutputGain + lateL * lateOutputGain)
