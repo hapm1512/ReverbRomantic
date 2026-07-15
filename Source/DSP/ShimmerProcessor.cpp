@@ -131,6 +131,17 @@ void ShimmerProcessor::processStereo (float inputL, float inputR,
 {
     juce::ScopedNoDenormals noDenormals;
 
+    if (! parameters.enabled
+        && ! bypassSmoother.isSmoothing()
+        && bypassSmoother.getCurrentValue() <= 0.000001f)
+    {
+        outputL = inputL;
+        outputR = inputR;
+        feedbackL = 0.0f;
+        feedbackR = 0.0f;
+        return;
+    }
+
     updateToneCoefficient (toneSmoother.getNextValue());
 
     const float active = bypassSmoother.getNextValue();
