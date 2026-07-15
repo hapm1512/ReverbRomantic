@@ -333,6 +333,14 @@ void ReverbRomanticAudioProcessor::prepareToPlay (double sampleRate,
     engine.prepare (spec);
     freezeProcessor.prepare (spec);
     shimmer.prepare (spec);
+
+    constexpr double smoothingSeconds = 0.025;
+    mixSmoother.reset (sampleRate, smoothingSeconds);
+    outputGainSmoother.reset (sampleRate, smoothingSeconds);
+    mixSmoother.setCurrentAndTargetValue (
+        apvts.getRawParameterValue (Parameters::IDs::mix)->load() * 0.01f);
+    outputGainSmoother.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (
+        apvts.getRawParameterValue (Parameters::IDs::output)->load()));
 }
 
 void ReverbRomanticAudioProcessor::releaseResources()
@@ -557,9 +565,10 @@ void ReverbRomanticAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     auto* left = buffer.getWritePointer (0);
     auto* right = buffer.getNumChannels() > 1 ? buffer.getWritePointer (1) : left;
 
-    const float mix = apvts.getRawParameterValue (Parameters::IDs::mix)->load() * 0.01f;
-    const float outputGain = juce::Decibels::decibelsToGain (
-        apvts.getRawParameterValue (Parameters::IDs::output)->load());
+    mixSmoother.setTargetValue (
+        apvts.getRawParameterValue (Parameters::IDs::mix)->load() * 0.01f);
+    outputGainSmoother.setTargetValue (juce::Decibels::decibelsToGain (
+        apvts.getRawParameterValue (Parameters::IDs::output)->load()));
 
     HybridFDN16::Parameters dspParameters;
     dspParameters.decaySeconds =
@@ -653,8 +662,10 @@ void ReverbRomanticAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
         }
     }
 
-for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
+    for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
     {
+        const float mix = mixSmoother.getNextValue();
+        const float outputGain = outputGainSmoother.getNextValue();
         const float dryL = left[sample];
         const float dryR = isMono ? dryL : right[sample];
         float wetL = 0.0f;
@@ -693,6 +704,10 @@ for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
             left[sample] = (dryL * (1.0f - mix) + wetL * mix) * outputGain;
             right[sample] = (dryR * (1.0f - mix) + wetR * mix) * outputGain;
         }
+
+        left[sample] = std::isfinite (left[sample]) ? left[sample] : 0.0f;
+        if (! isMono)
+            right[sample] = std::isfinite (right[sample]) ? right[sample] : 0.0f;
     }
 
     outputPeakL.store (buffer.getMagnitude (0, 0, buffer.getNumSamples()));
