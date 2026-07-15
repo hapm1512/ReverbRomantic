@@ -8,28 +8,28 @@ HybridFDN16::RoomProfile HybridFDN16::getRoomProfile (RoomModel model) noexcept
     {
         case RoomModel::room:
             return { 0.72f, 0.72f, 0.55f, -0.12f, -0.10f, 0.78f,
-                     0.65f, -0.18f, 0.82f, 1.18f, 0.78f, 0.112f, 0.108f };
+                     0.65f, -0.18f, 0.82f, 1.18f, 0.78f, 0.145f, 0.150f };
 
         case RoomModel::studio:
             return { 0.82f, 0.82f, 0.68f, -0.04f, -0.05f, 0.90f,
-                     0.72f, -0.12f, 0.92f, 1.10f, 0.84f, 0.108f, 0.110f };
+                     0.72f, -0.12f, 0.92f, 1.10f, 0.84f, 0.142f, 0.152f };
 
         case RoomModel::chamber:
             return { 0.96f, 0.96f, 0.84f, 0.04f, 0.02f, 0.94f,
-                     0.90f, 0.02f, 1.02f, 1.02f, 0.96f, 0.105f, 0.114f };
+                     0.90f, 0.02f, 1.02f, 1.02f, 0.96f, 0.140f, 0.158f };
 
         case RoomModel::cathedral:
-            return { 1.34f, 1.30f, 1.28f, 0.10f, 0.08f, 0.72f,
-                     1.12f, 0.14f, 1.12f, 0.76f, 1.18f, 0.096f, 0.120f };
+            return { 1.34f, 1.30f, 1.28f, 0.10f, 0.08f, 0.84f,
+                     1.12f, 0.14f, 1.12f, 0.76f, 1.18f, 0.132f, 0.168f };
 
         case RoomModel::plate:
             return { 0.88f, 1.04f, 0.34f, 0.14f, 0.10f, 1.12f,
-                     1.18f, 0.08f, 1.08f, 0.62f, 1.14f, 0.102f, 0.118f };
+                     1.18f, 0.08f, 1.08f, 0.62f, 1.14f, 0.138f, 0.164f };
 
         case RoomModel::hall:
         default:
-            return { 1.12f, 1.12f, 1.00f, 0.07f, 0.05f, 0.84f,
-                     1.00f, 0.08f, 1.08f, 0.88f, 1.08f, 0.100f, 0.117f };
+            return { 1.12f, 1.12f, 1.00f, 0.07f, 0.05f, 0.96f,
+                     1.00f, 0.08f, 1.08f, 0.88f, 1.08f, 0.138f, 0.165f };
     }
 }
 
@@ -52,8 +52,37 @@ void HybridFDN16::prepare (const juce::dsp::ProcessSpec& spec)
     stereoWidth.prepare (spec);
     limiter.prepare (spec);
 
+    parametersInitialised = false;
     setParameters (parameters);
     reset();
+}
+
+bool HybridFDN16::parametersEqual (const Parameters& a,
+                                   const Parameters& b) noexcept
+{
+    return a.decaySeconds == b.decaySeconds
+        && a.preDelayMs == b.preDelayMs
+        && a.sizePercent == b.sizePercent
+        && a.widthPercent == b.widthPercent
+        && a.diffusionPercent == b.diffusionPercent
+        && a.densityPercent == b.densityPercent
+        && a.modulationPercent == b.modulationPercent
+        && a.bloomPercent == b.bloomPercent
+        && a.duckingPercent == b.duckingPercent
+        && a.sidechainEnabled == b.sidechainEnabled
+        && a.sidechainThresholdDb == b.sidechainThresholdDb
+        && a.sidechainAmountPercent == b.sidechainAmountPercent
+        && a.sidechainAttackMs == b.sidechainAttackMs
+        && a.sidechainReleaseMs == b.sidechainReleaseMs
+        && a.sidechainHighPassHz == b.sidechainHighPassHz
+        && a.lowCutHz == b.lowCutHz
+        && a.highCutHz == b.highCutHz
+        && a.warmthDb == b.warmthDb
+        && a.brightnessDb == b.brightnessDb
+        && a.quality == b.quality
+        && a.freeze == b.freeze
+        && a.processOutputStage == b.processOutputStage
+        && a.roomModel == b.roomModel;
 }
 
 void HybridFDN16::reset()
@@ -109,7 +138,11 @@ void HybridFDN16::updateFDNCoefficients() noexcept
 
 void HybridFDN16::setParameters (const Parameters& newParameters) noexcept
 {
+    if (parametersInitialised && parametersEqual (parameters, newParameters))
+        return;
+
     parameters = newParameters;
+    parametersInitialised = true;
     parameters.decaySeconds = juce::jlimit (0.2f, 60.0f, parameters.decaySeconds);
     parameters.preDelayMs = juce::jlimit (0.0f, 250.0f, parameters.preDelayMs);
     parameters.sizePercent = juce::jlimit (25.0f, 200.0f, parameters.sizePercent);
@@ -150,7 +183,7 @@ void HybridFDN16::setParameters (const Parameters& newParameters) noexcept
                               parameters.sizePercent * 0.01f * roomProfile.delayScale);
     effectiveDecaySeconds = juce::jlimit (
         0.2f, 60.0f, parameters.decaySeconds * roomProfile.decayScale);
-    densityScale = juce::jmap (densityNormalised, 0.72f, 1.0f);
+    densityScale = juce::jmap (densityNormalised, 0.992f, 1.0f);
     effectiveDiffusionMix = diffusionNormalised;
     injectionGain = roomProfile.injectionGain;
     tapGain = roomProfile.tapGain;
@@ -236,13 +269,14 @@ void HybridFDN16::setParameters (const Parameters& newParameters) noexcept
     modulationDepthSamples = maxDepthMs * 0.001f
                              * static_cast<float> (sampleRate);
 
-    earlyOutputGain = juce::jmap (sizeNormalised, 0.42f, 0.20f)
+    earlyOutputGain = juce::jmap (sizeNormalised, 0.50f, 0.27f)
                       * roomProfile.earlyScale;
     const float lateSizeGain = juce::jmap (sizeNormalised, 0.84f, 1.10f)
                                * roomProfile.lateScale;
     const float densityNormalisation = juce::jmap (densityNormalised, 1.04f, 0.88f);
     const float diffusionNormalisation = juce::jmap (diffusionNormalised, 1.0f, 0.92f);
-    lateOutputGain = densityNormalisation * diffusionNormalisation * lateSizeGain;
+    lateOutputGain = 1.28f * densityNormalisation
+                     * diffusionNormalisation * lateSizeGain;
 
     const float densityEnergy = juce::jmap (densityNormalised, 1.08f, 0.92f);
     const float sizeEnergy = juce::jmap (sizeNormalised, 1.04f, 0.94f);
