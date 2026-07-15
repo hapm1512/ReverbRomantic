@@ -16,7 +16,7 @@ juce_add_plugin(ReverbRomantic
     NEEDS_MIDI_OUTPUT FALSE
     IS_MIDI_EFFECT FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS FALSE
-    COPY_PLUGIN_AFTER_BUILD FALSE
+    COPY_PLUGIN_AFTER_BUILD TRUE
     VST3_CATEGORIES Fx Reverb Stereo)
 juce_generate_juce_header(ReverbRomantic)
 file(GLOB_RECURSE REVERB_SOURCES CONFIGURE_DEPENDS Source/*.cpp Source/*.h)
