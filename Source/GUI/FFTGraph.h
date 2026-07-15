@@ -5,6 +5,13 @@
 class FFTGraph final : public juce::Component
 {
 public:
+    FFTGraph()
+    {
+        // Decorative background only: never consume mouse events.
+        setInterceptsMouseClicks (false, false);
+        setOpaque (false);
+    }
+
     void setActivity (float newActivity)
     {
         activity = juce::jlimit (0.0f, 1.0f, newActivity);

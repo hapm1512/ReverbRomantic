@@ -323,6 +323,9 @@ ReverbRomanticAudioProcessorEditor::ReverbRomanticAudioProcessorEditor (ReverbRo
     addAndMakeVisible (inputMeter);
     addAndMakeVisible (outputMeter);
     addAndMakeVisible (fftGraph);
+    // The FFT graph is a visual background. It must not block knobs/buttons.
+    fftGraph.setInterceptsMouseClicks (false, false);
+    fftGraph.toBack();
     addAndMakeVisible (bottomBar);
 
     startTimerHz (30);
