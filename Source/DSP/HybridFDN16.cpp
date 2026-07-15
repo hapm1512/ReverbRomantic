@@ -244,17 +244,19 @@ void HybridFDN16::setParameters (const Parameters& newParameters) noexcept
 
     const float warmthNormalised = juce::jlimit (-1.0f, 1.0f, parameters.warmthDb / 12.0f);
     const float brightnessNormalised = juce::jlimit (-1.0f, 1.0f, parameters.brightnessDb / 12.0f);
-    lowDecayMultiplier = juce::jlimit (0.955f, 0.9995f,
-        0.982f + 0.014f * warmthNormalised + 0.006f * sizeNormalised);
-    midDecayMultiplier = juce::jlimit (0.955f, 0.997f,
-        0.986f + 0.004f * roomProfile.decayScale);
-    highDecayMultiplier = juce::jlimit (0.82f, 0.992f,
-        0.925f + 0.040f * brightnessNormalised
-        + 0.020f * roomProfile.dampingScale);
+    // The main feedback coefficient already defines RT60. These subtle
+    // multipliers shape colour without collapsing the audible tail.
+    lowDecayMultiplier = juce::jlimit (0.996f, 0.9998f,
+        0.9982f + 0.0012f * warmthNormalised + 0.0004f * sizeNormalised);
+    midDecayMultiplier = juce::jlimit (0.997f, 0.9998f,
+        0.9988f + 0.0005f * roomProfile.decayScale);
+    highDecayMultiplier = juce::jlimit (0.975f, 0.9992f,
+        0.988f + 0.007f * brightnessNormalised
+        + 0.004f * roomProfile.dampingScale);
 
     // Prevent low-frequency bloom from becoming a resonant rumble.
-    bassResonanceControl = juce::jlimit (0.90f, 1.0f,
-        0.965f - 0.020f * warmthNormalised + 0.018f * densityNormalised);
+    bassResonanceControl = juce::jlimit (0.985f, 1.0f,
+        0.994f - 0.004f * warmthNormalised + 0.004f * densityNormalised);
 
     highPassCoefficient = std::exp (-juce::MathConstants<float>::twoPi
                                     * parameters.lowCutHz
@@ -398,7 +400,9 @@ void HybridFDN16::processStereo (float inputL,
 
     float earlyL = 0.0f;
     float earlyR = 0.0f;
-    earlyReflection.processStereo (predelayedL, predelayedR, earlyL, earlyR);
+    // Early reflections stay close to the source. Pre-delay belongs to the
+    // late field; applying it to both stages creates a detached, distant echo.
+    earlyReflection.processStereo (inputL, inputR, earlyL, earlyR);
 
     auto mixedFeedback = feedback;
     Matrix16::orthogonal (mixedFeedback);
@@ -432,7 +436,12 @@ void HybridFDN16::processStereo (float inputL,
         delays[index].setModulationOffset (
             modulationSource.getOffset (line) * modulationDepthSamples);
 
-        const float source = (index & 1u) != 0u ? diffusedR : diffusedL;
+        const bool rightLine = (index & 1u) != 0u;
+        const float lateSource = rightLine ? diffusedR : diffusedL;
+        const float nearSource = rightLine ? inputR : inputL;
+        // A low-level immediate feed bridges the close reflections into the
+        // pre-delayed late field without adding audible dry signal to wet-only use.
+        const float source = lateSource + nearSource * 0.18f;
         const float injection = source * localInjectionGain;
         const float loopGain = freezeActive
                                  ? 0.99995f
