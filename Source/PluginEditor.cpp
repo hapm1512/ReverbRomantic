@@ -297,7 +297,7 @@ ReverbRomanticAudioProcessorEditor::ReverbRomanticAudioProcessorEditor (ReverbRo
     addAndMakeVisible (fftGraph);
     addAndMakeVisible (bottomBar);
 
-    startTimerHz (30);
+    startTimerHz (20);
 }
 
 ReverbRomanticAudioProcessorEditor::~ReverbRomanticAudioProcessorEditor()
