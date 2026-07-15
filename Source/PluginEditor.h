@@ -5,7 +5,6 @@
 #include "PluginProcessor.h"
 #include "GUI/RomanticLookAndFeel.h"
 #include "GUI/Meter.h"
-#include "GUI/FFTGraph.h"
 #include "GUI/BottomBar.h"
 
 class ReverbRomanticAudioProcessorEditor final : public juce::AudioProcessorEditor,
@@ -78,7 +77,6 @@ private:
 
     Meter inputMeter { "INPUT" };
     Meter outputMeter { "OUTPUT" };
-    FFTGraph fftGraph;
     BottomBar bottomBar;
 
     std::array<juce::Rectangle<int>, 4> panelBounds;
