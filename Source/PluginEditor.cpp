@@ -322,13 +322,9 @@ ReverbRomanticAudioProcessorEditor::ReverbRomanticAudioProcessorEditor (ReverbRo
 
     addAndMakeVisible (inputMeter);
     addAndMakeVisible (outputMeter);
-    addAndMakeVisible (fftGraph);
-    // The FFT graph is a visual background. It must not block knobs/buttons.
-    fftGraph.setInterceptsMouseClicks (false, false);
-    fftGraph.toBack();
     addAndMakeVisible (bottomBar);
 
-    startTimerHz (30);
+    startTimerHz (20);
 }
 
 ReverbRomanticAudioProcessorEditor::~ReverbRomanticAudioProcessorEditor()
@@ -616,16 +612,12 @@ void ReverbRomanticAudioProcessorEditor::resized()
         }
     }
 
-    auto centre = getLocalBounds().reduced (170, 135);
-    fftGraph.setBounds (centre);
-    fftGraph.toBack();
 }
 
 void ReverbRomanticAudioProcessorEditor::timerCallback()
 {
     inputMeter.setLevels (processor.getInputPeakLeft(), processor.getInputPeakRight());
     outputMeter.setLevels (processor.getOutputPeakLeft(), processor.getOutputPeakRight());
-    fftGraph.setActivity (juce::jmax (processor.getOutputPeakLeft(), processor.getOutputPeakRight()));
     undoButton.setEnabled (processor.canUndoPresetChange());
     redoButton.setEnabled (processor.canRedoPresetChange());
     snapshotAButton.setToggleState (! processor.isSnapshotBActive(), juce::dontSendNotification);
