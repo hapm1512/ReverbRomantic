@@ -12,6 +12,9 @@
 - Retain `juce::ScopedNoDenormals` in the audio callback.
 - Reduce the GUI status timer from 30 Hz to 20 Hz.
 - Remove the decorative background waveform.
+- Correct Density so it no longer shortens RT60.
+- Raise wet injection and late-tail output gain.
+- Open the Hall and Cathedral high-frequency damping.
 - Keep all DSP memory allocation inside `prepareToPlay()`.
 
 ## Validation matrix
