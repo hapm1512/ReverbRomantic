@@ -7,6 +7,7 @@ namespace Parameters
 namespace IDs
 {
 inline constexpr auto algorithm  = "algorithm";
+inline constexpr auto engine     = "engine";
 inline constexpr auto mix        = "mix";
 inline constexpr auto decay      = "decay";
 inline constexpr auto time       = "time";
@@ -57,6 +58,8 @@ inline const juce::StringArray algorithmNames
     "Cathedral",
     "Ambient"
 };
+
+inline const juce::StringArray engineNames { "JUCE Core", "FDN16 Core" };
 
 juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 }
