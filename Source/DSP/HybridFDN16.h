@@ -99,10 +99,10 @@ private:
 
     std::array<RomanticDelayLine, 16> delays;
     std::array<RomanticDelayLine, 2> preDelay;
-    Matrix16::Vector feedback {};
-    Matrix16::Vector dampingState {};
-    Matrix16::Vector baseDelaySamples {};
-    Matrix16::Vector feedbackGains {};
+    alignas (64) Matrix16::Vector feedback {};
+    alignas (64) Matrix16::Vector dampingState {};
+    alignas (64) Matrix16::Vector baseDelaySamples {};
+    alignas (64) Matrix16::Vector feedbackGains {};
 
     Diffuser diffuser;
     EarlyReflection earlyReflection;
@@ -114,10 +114,10 @@ private:
     Limiter limiter;
 
     static constexpr std::array<int, 16> primeDelaySamples48k {
-        1493, 1801, 1987, 2111,
-        2273, 2549, 2843, 2969,
-        3253, 3413, 3547, 3821,
-        4027, 4283, 4663, 4889
+        1429, 1607, 1811, 2029,
+        2287, 2557, 2879, 3209,
+        3583, 4001, 4441, 4937,
+        5483, 6089, 6761, 7507
     };
 
     Parameters parameters;

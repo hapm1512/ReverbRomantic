@@ -194,7 +194,8 @@ void HybridFDN16::setParameters (const Parameters& newParameters) noexcept
 
     const float qualityScale = std::array<float, 4> { 0.55f, 0.8f, 1.0f, 1.15f }
         [static_cast<size_t> (parameters.quality)];
-    const float maxDepthMs = 0.34f * qualityScale * roomProfile.modulationScale;
+    // Sub-sample movement breaks static modes without audible chorus.
+    const float maxDepthMs = 0.075f * qualityScale * roomProfile.modulationScale;
     modulationDepthSamples = maxDepthMs * 0.001f
                              * static_cast<float> (sampleRate);
 
@@ -329,7 +330,7 @@ void HybridFDN16::processStereo (float inputL,
     earlyReflection.processStereo (predelayedL, predelayedR, earlyL, earlyR);
 
     auto mixedFeedback = feedback;
-    Matrix16::householder (mixedFeedback);
+    Matrix16::orthogonal (mixedFeedback);
 
     float lateL = 0.0f;
     float lateR = 0.0f;
@@ -345,7 +346,7 @@ void HybridFDN16::processStereo (float inputL,
         const float source = (i & 1) != 0 ? diffusedR : diffusedL;
         const float injection = parameters.freeze ? 0.0f : source * injectionGain;
         const float loopGain = parameters.freeze
-                                 ? 1.0f
+                                 ? 0.99995f
                                  : feedbackGains[index] * densityScale;
 
         const float delayed = delays[index].process (
