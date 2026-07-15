@@ -135,5 +135,8 @@ private:
     std::atomic<float> sidechainPeak { 0.0f };
     std::atomic<bool> sidechainConnected { false };
 
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> mixSmoother;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Multiplicative> outputGainSmoother;
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ReverbRomanticAudioProcessor)
 };
