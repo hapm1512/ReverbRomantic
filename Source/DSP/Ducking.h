@@ -1,9 +1,10 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include <vector>
 
-// Internal stereo ducking gain computer.
-// The dry signal drives the detector; gain is applied only to wet reverb.
+// Professional stereo-linked ducking gain computer.
+// The dry signal drives a hybrid RMS/peak detector; gain is applied only to wet reverb.
 class Ducking
 {
 public:
@@ -28,6 +29,8 @@ public:
 private:
     void updateTimeConstants() noexcept;
     [[nodiscard]] float computeTargetGain (float detectorDb) const noexcept;
+    [[nodiscard]] float getAdaptiveReleaseCoefficient (float detector,
+                                                       float previousDetector) const noexcept;
 
     double sampleRate = 44100.0;
 
@@ -37,13 +40,25 @@ private:
     float releaseMs = 250.0f;
     float kneeDb = 6.0f;
 
-    float attackCoefficient = 0.0f;
-    float releaseCoefficient = 0.0f;
-    float detectorEnvelope = 0.0f;
-    float smoothedGain = 1.0f;
-    float enabledMix = 1.0f;
-    float enabledTarget = 1.0f;
+    float detectorAttackCoefficient = 0.0f;
+    float detectorReleaseCoefficient = 0.0f;
+    float gainAttackCoefficient = 0.0f;
+    float gainReleaseCoefficient = 0.0f;
+    float rmsCoefficient = 0.0f;
     float bypassCoefficient = 0.0f;
 
-    bool enabled = true;
+    float peakEnvelope = 0.0f;
+    float rmsPower = 0.0f;
+    float hybridEnvelope = 0.0f;
+    float previousHybridEnvelope = 0.0f;
+    float smoothedGain = 1.0f;
+    float enabledMix = 0.0f;
+    float enabledTarget = 0.0f;
+
+    std::vector<float> lookAheadLeft;
+    std::vector<float> lookAheadRight;
+    int lookAheadWriteIndex = 0;
+    int lookAheadSamples = 0;
+
+    bool enabled = false;
 };

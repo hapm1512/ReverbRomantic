@@ -1,16 +1,27 @@
 #include "Ducking.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace
 {
 constexpr float minimumDetector = 1.0e-9f;
 constexpr float bypassFadeMs = 20.0f;
+constexpr float lookAheadMs = 5.0f;
+constexpr float rmsWindowMs = 18.0f;
+constexpr float peakWeight = 0.38f;
+constexpr float rmsWeight = 1.0f - peakWeight;
 }
 
 void Ducking::prepare (const juce::dsp::ProcessSpec& spec)
 {
     sampleRate = juce::jmax (1.0, spec.sampleRate);
+    lookAheadSamples = juce::jmax (1, static_cast<int> (
+        std::round (sampleRate * lookAheadMs * 0.001)));
+
+    lookAheadLeft.assign (static_cast<size_t> (lookAheadSamples + 1), 0.0f);
+    lookAheadRight.assign (static_cast<size_t> (lookAheadSamples + 1), 0.0f);
+
     updateTimeConstants();
 
     bypassCoefficient = std::exp (-1.0f /
@@ -21,10 +32,17 @@ void Ducking::prepare (const juce::dsp::ProcessSpec& spec)
 
 void Ducking::reset() noexcept
 {
-    detectorEnvelope = 0.0f;
+    peakEnvelope = 0.0f;
+    rmsPower = 0.0f;
+    hybridEnvelope = 0.0f;
+    previousHybridEnvelope = 0.0f;
     smoothedGain = 1.0f;
     enabledTarget = enabled ? 1.0f : 0.0f;
     enabledMix = enabledTarget;
+    lookAheadWriteIndex = 0;
+
+    std::fill (lookAheadLeft.begin(), lookAheadLeft.end(), 0.0f);
+    std::fill (lookAheadRight.begin(), lookAheadRight.end(), 0.0f);
 }
 
 void Ducking::setEnabled (bool shouldEnable) noexcept
@@ -68,35 +86,71 @@ void Ducking::setAmount (float percent) noexcept
 void Ducking::process (float dryL, float dryR,
                        float& wetL, float& wetR) noexcept
 {
-    const float detector = juce::jmax (std::abs (dryL), std::abs (dryR));
-    const float detectorCoefficient = detector > detectorEnvelope
-                                        ? attackCoefficient
-                                        : releaseCoefficient;
+    juce::ScopedNoDenormals noDenormals;
 
-    detectorEnvelope = detector
-                     + detectorCoefficient * (detectorEnvelope - detector);
+    const float linkedPeak = juce::jmax (std::abs (dryL), std::abs (dryR));
+    const float linkedPower = 0.5f * (dryL * dryL + dryR * dryR);
+
+    const float peakCoefficient = linkedPeak > peakEnvelope
+                                    ? detectorAttackCoefficient
+                                    : detectorReleaseCoefficient;
+    peakEnvelope = linkedPeak
+                 + peakCoefficient * (peakEnvelope - linkedPeak);
+
+    rmsPower = linkedPower + rmsCoefficient * (rmsPower - linkedPower);
+    const float rmsEnvelope = std::sqrt (juce::jmax (0.0f, rmsPower));
+
+    previousHybridEnvelope = hybridEnvelope;
+    const float hybridTarget = rmsWeight * rmsEnvelope + peakWeight * peakEnvelope;
+    const float hybridCoefficient = hybridTarget > hybridEnvelope
+                                      ? detectorAttackCoefficient
+                                      : getAdaptiveReleaseCoefficient (hybridTarget,
+                                                                       previousHybridEnvelope);
+    hybridEnvelope = hybridTarget
+                   + hybridCoefficient * (hybridEnvelope - hybridTarget);
 
     const float detectorDb = juce::Decibels::gainToDecibels (
-        juce::jmax (detectorEnvelope, minimumDetector), -120.0f);
+        juce::jmax (hybridEnvelope, minimumDetector), -120.0f);
 
     const float targetGain = computeTargetGain (detectorDb);
     const float gainCoefficient = targetGain < smoothedGain
-                                    ? attackCoefficient
-                                    : releaseCoefficient;
-
+                                    ? gainAttackCoefficient
+                                    : getAdaptiveReleaseCoefficient (hybridEnvelope,
+                                                                     previousHybridEnvelope);
     smoothedGain = targetGain
                  + gainCoefficient * (smoothedGain - targetGain);
 
     enabledMix = enabledTarget
                + bypassCoefficient * (enabledMix - enabledTarget);
 
-    const float appliedGain = juce::jmap (enabledMix, 1.0f, smoothedGain);
-    wetL *= appliedGain;
-    wetR *= appliedGain;
+    float delayedWetL = wetL;
+    float delayedWetR = wetR;
 
-    // Avoid denormals during long reverb tails.
-    if (std::abs (detectorEnvelope) < 1.0e-20f)
-        detectorEnvelope = 0.0f;
+    if (! lookAheadLeft.empty())
+    {
+        delayedWetL = lookAheadLeft[static_cast<size_t> (lookAheadWriteIndex)];
+        delayedWetR = lookAheadRight[static_cast<size_t> (lookAheadWriteIndex)];
+        lookAheadLeft[static_cast<size_t> (lookAheadWriteIndex)] = wetL;
+        lookAheadRight[static_cast<size_t> (lookAheadWriteIndex)] = wetR;
+
+        if (++lookAheadWriteIndex >= static_cast<int> (lookAheadLeft.size()))
+            lookAheadWriteIndex = 0;
+    }
+
+    // Crossfade into the delayed wet path only while Ducking is active.
+    const float lookAheadWetL = juce::jmap (enabledMix, wetL, delayedWetL);
+    const float lookAheadWetR = juce::jmap (enabledMix, wetR, delayedWetR);
+    const float appliedGain = juce::jmap (enabledMix, 1.0f, smoothedGain);
+
+    wetL = lookAheadWetL * appliedGain;
+    wetR = lookAheadWetR * appliedGain;
+
+    if (std::abs (peakEnvelope) < 1.0e-20f)
+        peakEnvelope = 0.0f;
+    if (std::abs (rmsPower) < 1.0e-30f)
+        rmsPower = 0.0f;
+    if (std::abs (hybridEnvelope) < 1.0e-20f)
+        hybridEnvelope = 0.0f;
 }
 
 float Ducking::getGainReductionDb() const noexcept
@@ -110,12 +164,15 @@ void Ducking::updateTimeConstants() noexcept
     const auto coefficientForMs = [this] (float milliseconds)
     {
         return std::exp (-1.0f /
-                         (0.001f * milliseconds
+                         (0.001f * juce::jmax (0.1f, milliseconds)
                           * static_cast<float> (sampleRate)));
     };
 
-    attackCoefficient = coefficientForMs (attackMs);
-    releaseCoefficient = coefficientForMs (releaseMs);
+    detectorAttackCoefficient = coefficientForMs (juce::jmax (0.5f, attackMs * 0.45f));
+    detectorReleaseCoefficient = coefficientForMs (juce::jmax (40.0f, releaseMs * 0.65f));
+    gainAttackCoefficient = coefficientForMs (attackMs);
+    gainReleaseCoefficient = coefficientForMs (releaseMs);
+    rmsCoefficient = coefficientForMs (rmsWindowMs);
 }
 
 float Ducking::computeTargetGain (float detectorDb) const noexcept
@@ -137,9 +194,33 @@ float Ducking::computeTargetGain (float detectorDb) const noexcept
     }
     else
     {
-        const float position = (detectorDb - (thresholdDb - halfKnee)) / kneeDb;
+        const float position = juce::jlimit (
+            0.0f, 1.0f,
+            (detectorDb - (thresholdDb - halfKnee)) / kneeDb);
         activity = position * position * (3.0f - 2.0f * position);
     }
 
-    return 1.0f - depthLinear * activity;
+    // The user Depth parameter remains the maximum gain reduction.
+    return juce::jlimit (1.0f - depthLinear, 1.0f,
+                         1.0f - depthLinear * activity);
+}
+
+float Ducking::getAdaptiveReleaseCoefficient (float detector,
+                                              float previousDetector) const noexcept
+{
+    const float safePrevious = juce::jmax (previousDetector, minimumDetector);
+    const float fallingRatio = juce::jlimit (0.0f, 1.0f,
+                                             detector / safePrevious);
+
+    // Fast recovery after short peaks, slower recovery during sustained vocals.
+    const float activity = juce::jlimit (0.0f, 1.0f,
+        juce::Decibels::gainToDecibels (juce::jmax (detector, minimumDetector), -120.0f)
+            / juce::jmax (-1.0f, thresholdDb));
+    const float adaptiveMs = juce::jmap (0.55f * activity + 0.45f * fallingRatio,
+                                         releaseMs * 0.55f,
+                                         releaseMs * 1.35f);
+
+    return std::exp (-1.0f /
+                     (0.001f * juce::jmax (20.0f, adaptiveMs)
+                      * static_cast<float> (sampleRate)));
 }
