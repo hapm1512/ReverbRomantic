@@ -113,6 +113,8 @@ private:
     void storePersistentMetadata();
 
     HybridFDN16 engine;
+    juce::dsp::Reverb juceReverb;
+    juce::AudioBuffer<float> juceWetBuffer;
     FreezeProcessor freezeProcessor;
     ShimmerProcessor shimmer;
     Ducking postDucking;
