@@ -223,6 +223,17 @@ void FreezeProcessor::processStereo (float inputL, float inputR,
 
     updateFadeRamp();
 
+    if (! parameters.enabled
+        && ! freezeBlend.isSmoothing()
+        && freezeBlend.getCurrentValue() <= 0.000001f)
+    {
+        mixSmoother.skip (1);
+        dampingSmoother.skip (1);
+        outputL = inputL;
+        outputR = inputR;
+        return;
+    }
+
     const float damping = dampingSmoother.getNextValue();
     const float cutoffHz = juce::jmap (damping, 0.0f, 1.0f, 18000.0f, 3500.0f);
     const float coefficient = 1.0f - std::exp (
